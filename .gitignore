@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+models/
+config.json
+transcripts/
+*.tar.bz2
+build/
+dist/
+FINAL-INSTALLER/
+branding/ico/
+installer/wizard/

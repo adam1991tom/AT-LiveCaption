@@ -1,0 +1,609 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AT LiveCaption - Control</title>
+<link rel="icon" id="favicon" href="/static/branding/at_gear_blue.png">
+<style>
+  :root { --accent: #069cfb; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #14161a; color: #eee; margin: 0; padding: 24px; }
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .brand-row img { width: 40px; height: 40px; }
+  h1 { font-size: 20px; margin: 0; }
+  .sub { color: #888; margin-bottom: 20px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; }
+  .theme-picker { display: flex; align-items: center; gap: 6px; }
+  .theme-picker select { padding: 4px 6px; }
+  .panel { background: #1f2229; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  .status-row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .status-item { font-size: 14px; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #666; }
+  .dot.ok { background: #35d07f; }
+  .dot.bad { background: #e5484d; }
+  .dot.warn { background: #f5a623; }
+  #meter-track { background: #333; height: 14px; border-radius: 7px; overflow: hidden; width: 260px; }
+  #meter-fill { background: #35d07f; height: 100%; width: 0%; transition: width 0.1s linear; }
+  #preview { background: #000; color: #fff; font-size: 18px; min-height: 60px; padding: 10px 14px; border-radius: 6px; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; margin-right: 8px; }
+  button.secondary { background: #3a3f4b; }
+  button.danger { background: #e5484d; }
+  select, input[type=text], input[type=number] { background: #12141a; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; }
+  a.link-btn { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 14px; }
+  .cols { display: flex; gap: 24px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 280px; }
+  .field { margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field label { font-size: 13px; color: #ccc; }
+  .field input, .field select { width: 140px; }
+  .gain-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .gain-row label { font-size: 13px; color: #ccc; width: 40px; }
+  .gain-row input[type=range] { flex: 1; }
+  .eq-value { font-size: 12px; color: #999; width: 60px; text-align: right; }
+  #eq-canvas-wrap { width: 100%; height: 260px; }
+  #eq-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; border-radius: 6px; }
+  .eq-hint { font-size: 11px; color: #777; margin-top: 8px; }
+  #loading-overlay {
+    position: fixed; inset: 0; background: #14161a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px; z-index: 1000; transition: opacity 0.4s ease;
+  }
+  #loading-overlay img { width: 96px; height: 96px; animation: pulse 1.6s ease-in-out infinite; }
+  #loading-overlay .msg { color: #ccc; font-size: 14px; }
+  #loading-overlay .title { color: #fff; font-size: 18px; font-weight: 600; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+</style>
+</head>
+<body>
+  <div id="loading-overlay">
+    <img id="loading-logo" src="/static/branding/at_gear_blue.png" alt="">
+    <div class="title">AT LiveCaption</div>
+    <div class="msg" id="loading-msg">Starting...</div>
+  </div>
+
+  <div class="brand-row">
+    <img id="brand-logo" src="/static/branding/at_gear_blue.png" alt="">
+    <h1>AT LiveCaption</h1>
+  </div>
+  <div class="sub">
+    <span>v0.5.1 &mdash; local streaming captions, no cloud, no internet required after install</span>
+    <span class="theme-picker">
+      Theme
+      <select id="theme-select"></select>
+    </span>
+  </div>
+
+  <div class="panel">
+    <div class="status-row">
+      <div class="status-item"><span class="dot" id="dot-engine"></span>ENGINE <span id="txt-engine">-</span></div>
+      <div class="status-item"><span class="dot" id="dot-audio"></span>AUDIO <span id="txt-audio">-</span></div>
+      <div class="status-item"><span class="dot" id="dot-captions"></span>CAPTIONS <span id="txt-captions">-</span></div>
+    </div>
+    <div style="margin-top:12px;">
+      LEVEL
+      <div id="meter-track"><div id="meter-fill"></div></div>
+    </div>
+    <div class="status-row" style="margin-top:12px;">
+      <div class="status-item">CPU <span id="txt-cpu">-</span></div>
+      <div class="status-item">RAM <span id="txt-ram">-</span></div>
+      <div class="status-item">GPU <span id="txt-gpu">-</span></div>
+      <div class="status-item">GPU MEM <span id="txt-gpu-mem">-</span></div>
+      <div class="status-item">GPU TEMP <span id="txt-gpu-temp">-</span></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="margin-bottom:8px; font-size:13px; color:#999;">LIVE PREVIEW</div>
+    <div id="preview"></div>
+  </div>
+
+  <div class="panel">
+    <div style="margin-bottom:10px;">
+      <select id="device-select"></select>
+      <button id="btn-use-device">Use this device</button>
+      <button class="secondary" id="btn-refresh-devices">Refresh</button>
+    </div>
+    <div>
+      <button id="btn-test">TEST CAPTION</button>
+      <button class="danger" id="btn-clear">CLEAR CAPTIONS</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div style="font-size:13px; color:#999;">MIC GAIN &amp; GRAPHIC EQ</div>
+      <button class="secondary" id="btn-eq-reset">Reset</button>
+    </div>
+    <div class="gain-row">
+      <label for="gain-slider">Gain</label>
+      <input type="range" id="gain-slider" min="-20" max="20" step="0.5" value="0">
+      <span id="gain-value" class="eq-value">0.0 dB</span>
+    </div>
+    <div id="eq-canvas-wrap">
+      <canvas id="eq-canvas"></canvas>
+    </div>
+    <div class="eq-hint">Drag the dots to shape the EQ. The filled curve behind them is the live input spectrum (RTA).</div>
+  </div>
+
+  <div class="panel">
+    <a class="link-btn" href="/audience" target="_blank">Open Audience Screen &#8599;</a>
+    <a class="link-btn" href="/overlay" target="_blank">Open Camera Overlay &#8599;</a>
+  </div>
+
+  <div class="panel">
+    <div class="cols">
+      <div class="col">
+        <h3>Audience Appearance</h3>
+        <div id="audience-fields"></div>
+        <button id="save-audience">Save</button>
+      </div>
+      <div class="col">
+        <h3>Camera Overlay Appearance</h3>
+        <div id="overlay-fields"></div>
+        <button id="save-overlay">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const FIELD_SPECS = [
+  ["font_family", "Font family", "text"],
+  ["font_size", "Font size", "number"],
+  ["font_weight", "Font weight", "number"],
+  ["text_align", "Alignment", "select", ["left", "center", "right"]],
+  ["line_height", "Line spacing", "number"],
+  ["text_color", "Text colour", "color"],
+  ["background_color", "Background colour", "color"],
+  ["background_opacity", "Background opacity (0-1)", "number"],
+  ["max_lines", "Max lines", "number"],
+  ["position", "Position", "select", ["top", "center", "bottom"]],
+  ["hold_seconds", "Hold before fade (s)", "number"],
+  ["fade_seconds", "Fade duration (s)", "number"],
+];
+
+const THEME_ACCENTS = { blue: "#069cfb", green: "#22c55e", purple: "#a855f7", orange: "#f97316" };
+let currentAccent = THEME_ACCENTS.blue;
+
+function applyTheme(theme) {
+  if (!THEME_ACCENTS[theme]) return;
+  currentAccent = THEME_ACCENTS[theme];
+  document.documentElement.style.setProperty("--accent", currentAccent);
+  const src = "/static/branding/at_gear_" + theme + ".png";
+  document.getElementById("brand-logo").src = src;
+  document.getElementById("loading-logo").src = src;
+  document.getElementById("favicon").href = src;
+  const sel = document.getElementById("theme-select");
+  if (sel.value !== theme) sel.value = theme;
+  if (typeof drawEq === "function") drawEq();
+}
+
+fetch("/api/theme").then(r => r.json()).then(data => {
+  const sel = document.getElementById("theme-select");
+  sel.innerHTML = "";
+  data.themes.forEach(t => {
+    const o = document.createElement("option");
+    o.value = t; o.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    sel.appendChild(o);
+  });
+  applyTheme(data.theme);
+});
+
+document.getElementById("theme-select").onchange = (e) => {
+  fetch("/api/theme", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ theme: e.target.value }) });
+  applyTheme(e.target.value);
+};
+
+let loadingHidden = false;
+const LOADING_MESSAGES = {
+  starting: "Starting engine...",
+  model_checking: "Checking speech model...",
+  model_downloading: "Downloading speech model (first run only)...",
+  model_extracting: "Extracting speech model...",
+};
+function updateLoadingOverlay(engine) {
+  if (loadingHidden) return;
+  if (engine && engine.ready) {
+    loadingHidden = true;
+    const overlay = document.getElementById("loading-overlay");
+    overlay.style.opacity = "0";
+    setTimeout(() => { overlay.style.display = "none"; }, 400);
+    return;
+  }
+  const state = engine ? engine.state : "starting";
+  document.getElementById("loading-msg").textContent = LOADING_MESSAGES[state] || "Starting...";
+}
+
+let appearance = {};
+
+function buildFields(containerId, surface) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+  FIELD_SPECS.forEach(([key, label, type, options]) => {
+    const row = document.createElement("div");
+    row.className = "field";
+    const lbl = document.createElement("label");
+    lbl.textContent = label;
+    let input;
+    if (type === "select") {
+      input = document.createElement("select");
+      options.forEach((opt) => {
+        const o = document.createElement("option");
+        o.value = opt; o.textContent = opt;
+        input.appendChild(o);
+      });
+    } else {
+      input = document.createElement("input");
+      input.type = type;
+      if (type === "number") input.step = "any";
+    }
+    input.dataset.key = key;
+    input.id = surface + "-" + key;
+    row.appendChild(lbl);
+    row.appendChild(input);
+    container.appendChild(row);
+  });
+}
+
+function fillFields(surface) {
+  const cfg = appearance[surface];
+  if (!cfg) return;
+  FIELD_SPECS.forEach(([key]) => {
+    const el = document.getElementById(surface + "-" + key);
+    if (el) el.value = cfg[key];
+  });
+}
+
+function collectFields(surface) {
+  const out = {};
+  FIELD_SPECS.forEach(([key, , type]) => {
+    const el = document.getElementById(surface + "-" + key);
+    if (!el) return;
+    out[key] = (type === "number") ? Number(el.value) : el.value;
+  });
+  return out;
+}
+
+buildFields("audience-fields", "audience");
+buildFields("overlay-fields", "overlay");
+
+fetch("/api/settings").then(r => r.json()).then(data => {
+  appearance = data;
+  fillFields("audience");
+  fillFields("overlay");
+});
+
+document.getElementById("save-audience").onclick = () => {
+  fetch("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({audience: collectFields("audience")}) });
+};
+document.getElementById("save-overlay").onclick = () => {
+  fetch("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({overlay: collectFields("overlay")}) });
+};
+
+document.getElementById("btn-test").onclick = () => fetch("/api/test-caption", { method: "POST" });
+document.getElementById("btn-clear").onclick = () => fetch("/api/clear", { method: "POST" });
+
+const gainSlider = document.getElementById("gain-slider");
+const gainValue = document.getElementById("gain-value");
+
+function postDsp(body) {
+  fetch("/api/audio/dsp", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) });
+}
+
+gainSlider.oninput = () => { gainValue.textContent = Number(gainSlider.value).toFixed(1) + " dB"; };
+gainSlider.onchange = () => postDsp({ gain_db: Number(gainSlider.value) });
+
+// ---- Graphic EQ canvas + live RTA -----------------------------------------
+const eqCanvas = document.getElementById("eq-canvas");
+const eqCtx = eqCanvas.getContext("2d");
+
+const eq = {
+  bandsHz: [],
+  bandGainsDb: [],
+  maxBandGainDb: 12,
+  rtaNumBands: 31,
+  rtaFreqMin: 20,
+  rtaFreqMax: 20000,
+  rtaFloorDb: -60,
+  rtaBands: [],
+  dragIndex: -1,
+};
+
+const PLOT_MARGIN = { left: 34, right: 12, top: 12, bottom: 20 };
+
+function eqPlotRect() {
+  const w = eqCanvas.width, h = eqCanvas.height;
+  return {
+    x0: PLOT_MARGIN.left, y0: PLOT_MARGIN.top,
+    x1: w - PLOT_MARGIN.right, y1: h - PLOT_MARGIN.bottom,
+    w: w - PLOT_MARGIN.left - PLOT_MARGIN.right,
+    h: h - PLOT_MARGIN.top - PLOT_MARGIN.bottom,
+  };
+}
+
+function freqToX(hz) {
+  const r = eqPlotRect();
+  const lo = Math.log10(eq.rtaFreqMin), hi = Math.log10(eq.rtaFreqMax);
+  return r.x0 + (Math.log10(hz) - lo) / (hi - lo) * r.w;
+}
+
+function gainToY(db) {
+  const r = eqPlotRect();
+  const t = (db + eq.maxBandGainDb) / (2 * eq.maxBandGainDb); // 0..1, low..high
+  return r.y1 - t * r.h;
+}
+
+function yToGain(y) {
+  const r = eqPlotRect();
+  const t = Math.max(0, Math.min(1, (r.y1 - y) / r.h));
+  return t * 2 * eq.maxBandGainDb - eq.maxBandGainDb;
+}
+
+function dbToRtaY(db) {
+  const r = eqPlotRect();
+  const t = Math.max(0, Math.min(1, (db - eq.rtaFloorDb) / (0 - eq.rtaFloorDb)));
+  return r.y1 - t * r.h;
+}
+
+function resizeEqCanvas() {
+  const rect = eqCanvas.getBoundingClientRect();
+  eqCanvas.width = Math.max(300, Math.round(rect.width));
+  eqCanvas.height = Math.max(150, Math.round(rect.height));
+  drawEq();
+}
+
+function drawEq() {
+  const r = eqPlotRect();
+  const w = eqCanvas.width, h = eqCanvas.height;
+  eqCtx.clearRect(0, 0, w, h);
+
+  // Panel background
+  eqCtx.fillStyle = "#12141a";
+  eqCtx.fillRect(0, 0, w, h);
+
+  // Gain gridlines
+  eqCtx.strokeStyle = "#2a2e38";
+  eqCtx.fillStyle = "#666";
+  eqCtx.font = "10px Segoe UI, Arial, sans-serif";
+  eqCtx.textAlign = "right";
+  [eq.maxBandGainDb, eq.maxBandGainDb / 2, 0, -eq.maxBandGainDb / 2, -eq.maxBandGainDb].forEach((db) => {
+    const y = gainToY(db);
+    eqCtx.beginPath();
+    eqCtx.moveTo(r.x0, y);
+    eqCtx.lineTo(r.x1, y);
+    eqCtx.lineWidth = db === 0 ? 1.5 : 1;
+    eqCtx.strokeStyle = db === 0 ? "#3a3f4b" : "#22262f";
+    eqCtx.stroke();
+    eqCtx.fillText((db > 0 ? "+" : "") + db, r.x0 - 6, y + 3);
+  });
+
+  // Frequency gridlines
+  eqCtx.textAlign = "center";
+  [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach((hz) => {
+    const x = freqToX(hz);
+    eqCtx.beginPath();
+    eqCtx.moveTo(x, r.y0);
+    eqCtx.lineTo(x, r.y1);
+    eqCtx.strokeStyle = "#1c1f26";
+    eqCtx.lineWidth = 1;
+    eqCtx.stroke();
+    const label = hz >= 1000 ? (hz / 1000) + "k" : String(hz);
+    eqCtx.fillStyle = "#555";
+    eqCtx.fillText(label, x, h - 6);
+  });
+
+  // Live RTA spectrum (filled area)
+  if (eq.rtaBands.length) {
+    eqCtx.beginPath();
+    eqCtx.moveTo(r.x0, r.y1);
+    for (let i = 0; i < eq.rtaNumBands; i++) {
+      const lo = Math.log10(eq.rtaFreqMin), hi = Math.log10(eq.rtaFreqMax);
+      const centerLog = lo + (i + 0.5) / eq.rtaNumBands * (hi - lo);
+      const x = eqPlotRect().x0 + (centerLog - lo) / (hi - lo) * eqPlotRect().w;
+      const y = dbToRtaY(eq.rtaBands[i]);
+      eqCtx.lineTo(x, y);
+    }
+    eqCtx.lineTo(r.x1, r.y1);
+    eqCtx.closePath();
+    eqCtx.fillStyle = "rgba(6, 156, 251, 0.28)";
+    eqCtx.fill();
+  }
+
+  // EQ response curve (smoothed through band points)
+  const pts = eq.bandsHz.map((hz, i) => ({ x: freqToX(hz), y: gainToY(eq.bandGainsDb[i] || 0) }));
+  if (pts.length) {
+    eqCtx.beginPath();
+    eqCtx.moveTo(r.x0, pts[0].y);
+    eqCtx.lineTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2;
+      const my = (pts[i].y + pts[i + 1].y) / 2;
+      eqCtx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    eqCtx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    eqCtx.lineTo(r.x1, pts[pts.length - 1].y);
+    eqCtx.strokeStyle = currentAccent;
+    eqCtx.lineWidth = 2;
+    eqCtx.stroke();
+
+    // Draggable handles
+    pts.forEach((p, i) => {
+      eqCtx.beginPath();
+      eqCtx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      eqCtx.fillStyle = i === eq.dragIndex ? "#fff" : currentAccent;
+      eqCtx.fill();
+      eqCtx.strokeStyle = "#12141a";
+      eqCtx.lineWidth = 1.5;
+      eqCtx.stroke();
+    });
+  }
+}
+
+function nearestBandIndex(x, y) {
+  let best = -1, bestDist = 16; // px hit-test radius
+  eq.bandsHz.forEach((hz, i) => {
+    const px = freqToX(hz), py = gainToY(eq.bandGainsDb[i] || 0);
+    const d = Math.hypot(x - px, y - py);
+    if (d < bestDist) { best = i; bestDist = d; }
+  });
+  return best;
+}
+
+function canvasPoint(evt) {
+  const rect = eqCanvas.getBoundingClientRect();
+  return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+}
+
+let lastDragPost = 0;
+eqCanvas.addEventListener("mousedown", (evt) => {
+  const p = canvasPoint(evt);
+  eq.dragIndex = nearestBandIndex(p.x, p.y);
+  if (eq.dragIndex >= 0) drawEq();
+});
+window.addEventListener("mousemove", (evt) => {
+  if (eq.dragIndex < 0) return;
+  const p = canvasPoint(evt);
+  const db = Math.round(yToGain(p.y) * 2) / 2; // snap to 0.5dB
+  eq.bandGainsDb[eq.dragIndex] = Math.max(-eq.maxBandGainDb, Math.min(eq.maxBandGainDb, db));
+  drawEq();
+  const now = performance.now();
+  if (now - lastDragPost > 80) {
+    postDsp({ eq_bands: [{ index: eq.dragIndex, gain_db: eq.bandGainsDb[eq.dragIndex] }] });
+    lastDragPost = now;
+  }
+});
+window.addEventListener("mouseup", () => {
+  if (eq.dragIndex >= 0) {
+    postDsp({ eq_bands: [{ index: eq.dragIndex, gain_db: eq.bandGainsDb[eq.dragIndex] }] });
+  }
+  eq.dragIndex = -1;
+  drawEq();
+});
+
+window.addEventListener("resize", resizeEqCanvas);
+
+fetch("/api/audio/dsp").then(r => r.json()).then(data => {
+  eq.bandsHz = data.eq_bands_hz;
+  eq.bandGainsDb = data.eq_band_gains_db.slice();
+  eq.maxBandGainDb = data.max_band_gain_db;
+  eq.rtaNumBands = data.rta_num_bands;
+  eq.rtaFreqMin = data.rta_freq_min;
+  eq.rtaFreqMax = data.rta_freq_max;
+  eq.rtaFloorDb = data.rta_floor_db;
+  gainSlider.min = -data.max_gain_db; gainSlider.max = data.max_gain_db;
+  gainSlider.value = data.gain_db;
+  gainValue.textContent = data.gain_db.toFixed(1) + " dB";
+  resizeEqCanvas();
+});
+
+document.getElementById("btn-eq-reset").onclick = () => {
+  gainSlider.value = 0; gainValue.textContent = "0.0 dB";
+  eq.bandGainsDb = eq.bandsHz.map(() => 0);
+  const bands = eq.bandsHz.map((hz, i) => ({ index: i, gain_db: 0 }));
+  postDsp({ gain_db: 0, eq_bands: bands });
+  drawEq();
+};
+
+// Devices are identified by name across refreshes -- PortAudio can renumber
+// indices when other devices are plugged/unplugged, so an index alone isn't
+// a stable way to remember what the operator had selected in the dropdown.
+let selectedDeviceName = null;
+
+function applyDeviceList(devices) {
+  const sel = document.getElementById("device-select");
+  if (!selectedDeviceName && sel.selectedOptions.length) {
+    selectedDeviceName = sel.selectedOptions[0].dataset.name;
+  }
+  sel.innerHTML = "";
+  devices.forEach(d => {
+    const o = document.createElement("option");
+    o.value = d.index;
+    o.dataset.name = d.name;
+    o.textContent = d.name + (d.is_default ? " (Windows default)" : "");
+    sel.appendChild(o);
+  });
+  if (selectedDeviceName) {
+    const match = Array.from(sel.options).find(o => o.dataset.name === selectedDeviceName);
+    if (match) sel.value = match.value;
+  }
+}
+
+function loadDevices() {
+  fetch("/api/devices").then(r => r.json()).then(applyDeviceList);
+}
+loadDevices();
+setInterval(loadDevices, 5000); // cheap: just re-reads PortAudio's current table
+
+document.getElementById("device-select").onchange = (e) => {
+  selectedDeviceName = e.target.selectedOptions[0] ? e.target.selectedOptions[0].dataset.name : null;
+};
+
+document.getElementById("btn-use-device").onclick = () => {
+  const sel = document.getElementById("device-select");
+  selectedDeviceName = sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.name : null;
+  const index = Number(sel.value);
+  fetch("/api/devices/select", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ index }) });
+};
+
+document.getElementById("btn-refresh-devices").onclick = () => {
+  const btn = document.getElementById("btn-refresh-devices");
+  btn.disabled = true;
+  fetch("/api/devices/rescan", { method: "POST" }).then(r => r.json()).then((devices) => {
+    applyDeviceList(devices);
+    btn.disabled = false;
+  }).catch(() => { btn.disabled = false; });
+};
+
+function setDot(id, state) {
+  const el = document.getElementById(id);
+  el.className = "dot " + state;
+}
+
+function levelToPct(db) {
+  const clamped = Math.max(-60, Math.min(0, db));
+  return ((clamped + 60) / 60) * 100;
+}
+
+const finals = [];
+let partial = "";
+function renderPreview() {
+  document.getElementById("preview").textContent = finals.slice(-3).concat(partial ? [partial] : []).join("  /  ");
+}
+
+const proto = location.protocol === "https:" ? "wss" : "ws";
+const ws = new WebSocket(proto + "://" + location.host + "/ws");
+ws.onmessage = (evt) => {
+  const msg = JSON.parse(evt.data);
+  if (msg.type === "status") {
+    const engineReady = msg.engine && msg.engine.ready;
+    setDot("dot-engine", engineReady ? "ok" : "warn");
+    document.getElementById("txt-engine").textContent = msg.engine ? msg.engine.state : "-";
+
+    const audioConnected = msg.audio && msg.audio.connected;
+    setDot("dot-audio", audioConnected ? "ok" : "bad");
+    document.getElementById("txt-audio").textContent = msg.audio ? (msg.audio.device || "no device selected") : "-";
+
+    setDot("dot-captions", (engineReady && audioConnected) ? "ok" : "warn");
+    document.getElementById("txt-captions").textContent = (engineReady && audioConnected) ? "LIVE" : "IDLE";
+
+    if (msg.audio) document.getElementById("meter-fill").style.width = levelToPct(msg.audio.level_db) + "%";
+    updateLoadingOverlay(msg.engine);
+  } else if (msg.type === "appearance") {
+    if (msg.theme) applyTheme(msg.theme);
+  } else if (msg.type === "rta") {
+    eq.rtaBands = msg.bands_db;
+    drawEq();
+  } else if (msg.type === "resources") {
+    document.getElementById("txt-cpu").textContent = msg.cpu_percent.toFixed(0) + "%";
+    document.getElementById("txt-ram").textContent = (msg.ram_used_mb / 1024).toFixed(1) + " / " + (msg.ram_total_mb / 1024).toFixed(1) + " GB";
+    document.getElementById("txt-gpu").textContent = msg.gpu_percent === null ? "N/A" : msg.gpu_percent.toFixed(0) + "%";
+    document.getElementById("txt-gpu-mem").textContent = msg.gpu_mem_used_mb === null ? "N/A" : msg.gpu_mem_used_mb + " / " + msg.gpu_mem_total_mb + " MB";
+    document.getElementById("txt-gpu-temp").textContent = msg.gpu_temp_c === null ? "N/A" : msg.gpu_temp_c.toFixed(0) + "°C";
+  } else if (msg.type === "sync") {
+    finals.length = 0; finals.push(...msg.recent_finals); partial = msg.partial || ""; renderPreview();
+  } else if (msg.type === "final") {
+    finals.push(msg.text); partial = ""; renderPreview();
+  } else if (msg.type === "partial") {
+    partial = msg.text; renderPreview();
+  } else if (msg.type === "clear") {
+    finals.length = 0; partial = ""; renderPreview();
+  }
+};
+</script>
+</body>
+</html>
