@@ -177,6 +177,7 @@ class CaptionEngine:
                     self._emit_status(True, device_name, SILENCE_FLOOR_DB, "connected")
                     last_status_at = 0.0
                     last_rta_at = 0.0
+                    last_partial = ""
 
                     while not self._stop_event.is_set():
                         samples, _ = input_stream.read(samples_per_read)
@@ -203,8 +204,10 @@ class CaptionEngine:
                                 self._emit({"type": "final", "text": text})
                                 self.transcript_writer.write_final(text)
                             self.recognizer.reset(stream)
-                        elif text:
+                            last_partial = ""
+                        elif text and text != last_partial:
                             self._emit({"type": "partial", "text": text})
+                            last_partial = text
 
             except Exception as exc:  # device unplugged, driver error, etc.
                 if self._stop_event.is_set():
@@ -221,6 +224,7 @@ class CaptionEngine:
                     for d in audio_devices.list_input_devices():
                         if d["name"] == device_name:
                             device_index = d["index"]
+                            self.device_index = device_index
                             break
                 except Exception:
                     pass

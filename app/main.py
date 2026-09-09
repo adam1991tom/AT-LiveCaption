@@ -20,6 +20,7 @@ from app.core.asr_engine import CaptionEngine
 from app.core.config import THEMES, load_config, save_config
 from app.core.hub import ConnectionHub
 from app.core.transcript import TranscriptWriter
+from app import version
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -35,6 +36,24 @@ def _appearance_message() -> dict:
         "theme": state["config"]["theme"],
         **state["config"]["appearance"],
     }
+
+
+def _broadcast_engine_status(ready: bool, engine_state: str, progress: float | None = None) -> None:
+    """Single place that builds the engine-loading status message, used by
+    every stage of model prep so the shape can't drift between call sites."""
+    engine_payload: dict = {"ready": ready, "state": engine_state}
+    if progress is not None:
+        engine_payload["progress"] = progress
+    asyncio.run_coroutine_threadsafe(
+        hub.broadcast(
+            {
+                "type": "status",
+                "audio": hub.status.get("audio", {}),
+                "engine": engine_payload,
+            }
+        ),
+        state["loop"],
+    )
 
 
 @app.on_event("startup")
@@ -57,8 +76,9 @@ async def startup() -> None:
     async def _broadcast_resources_forever():
         loop = asyncio.get_event_loop()
         while True:
-            stats = await loop.run_in_executor(None, resources.get_resource_stats)
-            await hub.broadcast({"type": "resources", **stats})
+            if hub.client_count() > 0:
+                stats = await loop.run_in_executor(None, resources.get_resource_stats)
+                await hub.broadcast({"type": "resources", **stats})
             await asyncio.sleep(2.0)
 
     asyncio.create_task(_broadcast_resources_forever())
@@ -72,35 +92,24 @@ async def startup() -> None:
 
             def _progress(stage, pct):
                 state["model_state"] = stage
-                asyncio.run_coroutine_threadsafe(
-                    hub.broadcast(
-                        {
-                            "type": "status",
-                            "audio": hub.status.get("audio", {}),
-                            "engine": {"ready": False, "state": f"model_{stage}", "progress": pct},
-                        }
-                    ),
-                    state["loop"],
-                )
+                _broadcast_engine_status(ready=False, engine_state=f"model_{stage}", progress=pct)
 
             try:
                 model_download.download_and_extract(model_dir, progress_cb=_progress)
             except Exception as exc:
                 state["model_state"] = f"error: {exc}"
+                _broadcast_engine_status(ready=False, engine_state="model_error")
                 return
 
-        engine.load_model(str(model_dir))
+        try:
+            engine.load_model(str(model_dir))
+        except Exception as exc:
+            state["model_state"] = f"error: {exc}"
+            _broadcast_engine_status(ready=False, engine_state="model_error")
+            return
+
         state["model_state"] = "ready"
-        asyncio.run_coroutine_threadsafe(
-            hub.broadcast(
-                {
-                    "type": "status",
-                    "audio": hub.status.get("audio", {}),
-                    "engine": {"ready": True, "state": "ready"},
-                }
-            ),
-            state["loop"],
-        )
+        _broadcast_engine_status(ready=True, engine_state="ready")
 
         device_index = config.get("audio_device_index")
         device_name = config.get("audio_device_name")
@@ -133,6 +142,11 @@ async def overlay_page():
     return FileResponse(STATIC_DIR / "overlay.html")
 
 
+@app.get("/about")
+async def about_page():
+    return FileResponse(STATIC_DIR / "about.html")
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -148,6 +162,20 @@ async def ws_endpoint(websocket: WebSocket) -> None:
 
 
 # ---- REST API ------------------------------------------------------------
+@app.get("/api/about")
+async def api_about():
+    return JSONResponse(
+        {
+            "app_version": version.APP_VERSION,
+            "asr_engine": version.ASR_ENGINE,
+            "model_name": version.MODEL_NAME,
+            "model_source_url": version.MODEL_SOURCE_URL,
+            "save_transcript": state["config"]["save_transcript"],
+            "transcript_dir": state["config"]["transcript_dir"],
+        }
+    )
+
+
 @app.get("/api/devices")
 async def api_devices():
     return JSONResponse(audio_devices.list_input_devices())
@@ -211,7 +239,10 @@ async def api_set_dsp(payload: dict):
     settings = engine.audio_settings()
     config["audio_gain_db"] = settings["gain_db"]
     config["eq_band_gains_db"] = settings["eq_band_gains_db"]
-    save_config(config)
+    # Dragging an EQ handle fires this endpoint up to ~every 80ms; a
+    # blocking file write on the event loop here would stall every other
+    # client's status/RTA broadcasts for the duration of the drag.
+    await asyncio.get_event_loop().run_in_executor(None, save_config, config)
     return JSONResponse({"ok": True, **settings})
 
 
@@ -244,6 +275,22 @@ async def api_set_theme(payload: dict):
     save_config(config)
     await hub.broadcast(_appearance_message())
     return JSONResponse({"ok": True, "theme": theme})
+
+
+@app.get("/api/transcript")
+async def api_get_transcript():
+    return JSONResponse({"enabled": state["config"]["save_transcript"]})
+
+
+@app.post("/api/transcript")
+async def api_set_transcript(payload: dict):
+    enabled = bool(payload.get("enabled"))
+    config = state["config"]
+    config["save_transcript"] = enabled
+    save_config(config)
+    writer: TranscriptWriter = state["transcript_writer"]
+    writer.set_enabled(enabled)
+    return JSONResponse({"ok": True, "enabled": enabled})
 
 
 @app.get("/api/settings")

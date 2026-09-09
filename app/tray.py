@@ -3,7 +3,6 @@ it if it dies unexpectedly, and gives the operator quick links + control.
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import threading
@@ -13,10 +12,10 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-PORT = int(os.environ.get("AT_LIVECAPTION_PORT", 8765))
-BASE_URL = f"http://127.0.0.1:{PORT}"
+from app.core.procutil import CREATIONFLAGS, get_base_url
+
+BASE_URL = get_base_url()
 POLL_SECONDS = 2.0
-CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
 
 
 def _window_argv(page: str) -> list[str]:

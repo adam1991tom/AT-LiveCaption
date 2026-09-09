@@ -51,7 +51,10 @@ def download_and_extract(model_dir: Path, progress_cb=None) -> None:
 
     _report("extracting", None)
     with tarfile.open(archive_path, mode="r:bz2") as tar:
-        tar.extractall(path=model_dir.parent)
+        # filter="data" rejects path traversal / absolute paths / device
+        # files -- defense in depth in case the release URL is ever
+        # redirected or compromised (Python 3.11.4+).
+        tar.extractall(path=model_dir.parent, filter="data")
     archive_path.unlink(missing_ok=True)
 
     if not model_is_ready(model_dir):

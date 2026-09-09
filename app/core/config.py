@@ -32,7 +32,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "audio_device_index": None,
     "audio_device_name": None,
     "model_dir": MODEL_DIR_DEFAULT,
-    "save_transcript": True,
+    "save_transcript": False,
     "transcript_dir": str(DATA_DIR / "transcripts"),
     "theme": "blue",
     "audio_gain_db": 0.0,
@@ -91,7 +91,15 @@ def load_config() -> dict[str, Any]:
             on_disk = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             on_disk = {}
-        return _deep_merge(DEFAULT_CONFIG, on_disk)
+        # _deep_merge only copies keys present in `on_disk`; anything missing
+        # (e.g. every key, if the file was corrupt) would otherwise fall
+        # through as a *reference* to DEFAULT_CONFIG's own nested dicts, so
+        # a later in-place mutation of the returned config (settings
+        # updates) would silently corrupt the shared module-level default
+        # for the rest of the process. Deep-copy first so every call gets
+        # its own independent tree regardless of how much of it gets merged.
+        default_copy = json.loads(json.dumps(DEFAULT_CONFIG))
+        return _deep_merge(default_copy, on_disk)
 
 
 def save_config(config: dict[str, Any]) -> None:

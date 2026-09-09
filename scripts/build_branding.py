@@ -53,7 +53,7 @@ def make_wizard_images(theme: str, img: Image.Image) -> None:
     # Large (164x314): logo near the top of the tall left-hand banner.
     large = Image.new("RGB", WIZARD_LARGE, "white")
     logo_large = img.copy()
-    logo_large.thumbnail((WIZARD_LARGE[0] - 24, WIZARD_LARGE[0] - 24), Image.LANCZOS)
+    logo_large.thumbnail((WIZARD_LARGE[0] - 24, WIZARD_LARGE[1] - 24), Image.LANCZOS)
     large.paste(
         logo_large,
         ((WIZARD_LARGE[0] - logo_large.width) // 2, 40),

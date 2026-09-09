@@ -44,7 +44,9 @@
     function render() {
       pruneExpired();
       const maxLines = parseInt(els.box.dataset.maxLines || "3", 10);
-      const shown = finals.slice(-Math.max(0, maxLines - (partial ? 1 : 0)));
+      const keep = Math.max(0, maxLines - (partial ? 1 : 0));
+      // finals.slice(-0) is slice(0) in JS (whole array) -- guard the zero case explicitly.
+      const shown = keep > 0 ? finals.slice(-keep) : [];
       let html = shown
         .map((f) => "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts) + "\">" + escapeHtml(f.text) + "</div>")
         .join("");

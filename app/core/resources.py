@@ -12,7 +12,8 @@ import subprocess
 
 import psutil
 
-CREATIONFLAGS = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+from app.core.procutil import CREATIONFLAGS
+
 _nvidia_smi_path: str | None = None
 _nvidia_smi_checked = False
 

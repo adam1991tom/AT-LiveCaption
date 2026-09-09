@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AT LiveCaption - About &amp; Privacy</title>
+<link rel="icon" id="favicon" href="/static/branding/at_gear_blue.png">
+<style>
+  :root { --accent: #069cfb; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #14161a; color: #ddd; margin: 0; padding: 24px 24px 60px; max-width: 760px; }
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .brand-row img { width: 40px; height: 40px; }
+  h1 { font-size: 22px; margin: 0; color: #fff; }
+  h2 { font-size: 16px; color: #fff; margin: 28px 0 10px; border-bottom: 1px solid #2a2e38; padding-bottom: 6px; }
+  .sub { color: #888; margin-bottom: 24px; font-size: 13px; }
+  .panel { background: #1f2229; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  table.kv { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.kv td { padding: 5px 8px 5px 0; vertical-align: top; }
+  table.kv td:first-child { color: #999; width: 180px; white-space: nowrap; }
+  table.kv a { color: var(--accent); }
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin-bottom: 6px; line-height: 1.5; }
+  .note { color: #999; font-size: 13px; font-style: italic; margin-top: 14px; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="brand-row">
+    <img id="brand-logo" src="/static/branding/at_gear_blue.png" alt="">
+    <h1>AT LiveCaption</h1>
+  </div>
+  <div class="sub"><a class="back" href="/">&larr; Back to control page</a></div>
+
+  <div class="panel">
+    <h2 style="margin-top:0; border:none;">What this is</h2>
+    <p>AT LiveCaption is a local, offline, real-time speech-to-text captioning tool for conferences and
+    live events. It takes an audio feed from a microphone or a sound desk's aux/matrix output, transcribes
+    speech continuously as it's spoken, and shows live captions on three outputs at once:</p>
+    <ul>
+      <li>This control page &mdash; where an operator picks the audio input and adjusts appearance</li>
+      <li>A clean, full-screen <b>audience accessibility screen</b> for a stage-side display</li>
+      <li>A transparent <b>camera/streaming overlay</b> for OBS, vMix, or similar</li>
+    </ul>
+
+    <h2>How it works</h2>
+    <ol style="padding-left:20px; line-height:1.6;">
+      <li>Audio comes in from a Windows recording device you select on the control page.</li>
+      <li>Speech is recognised <b>locally on this PC</b> by a streaming AI speech-recognition model &mdash;
+      no cloud service is involved, and no internet connection is required once it's installed.</li>
+      <li>Recognised text is sent instantly to every connected caption display over a local WebSocket
+      connection &mdash; that's why captions appear on all three pages at once, live.</li>
+      <li>Only finalised caption lines can optionally be saved to a transcript file on this PC.
+      Interim (still-being-recognised) text and raw audio are never saved anywhere.</li>
+    </ol>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0; border:none;">Version &amp; AI model</h2>
+    <table class="kv" id="about-table"></table>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0; border:none;">Privacy &amp; GDPR</h2>
+    <p>This section describes what the <i>software</i> does. It isn't legal advice, and installing this
+    app doesn't by itself make your event "GDPR compliant" &mdash; that depends on how you use it. If
+    you're unsure, check with whoever handles data protection for your organisation.</p>
+
+    <p><b>What AT LiveCaption does:</b></p>
+    <ul>
+      <li>Audio is processed only in memory, in real time. It is <b>never written to disk</b>, in any form, at any point.</li>
+      <li>No audio and no caption text is ever sent to an external server or cloud service. All speech
+      recognition runs locally on this PC.</li>
+      <li>The only internet connection this software ever makes is a one-time download of the speech
+      model during first-time setup &mdash; a software download, not a data upload. No conference audio
+      or text is involved in it.</li>
+      <li>Live captions are sent over your local network to whichever devices you point at the audience
+      screen and camera overlay URLs. That's how the product is designed to work &mdash; keep that
+      traffic on a network you trust.</li>
+      <li>Saving a transcript (finalised captions only &mdash; never partial text, never audio) is
+      <b>off by default</b> and has to be explicitly turned on by the operator, on the control page.</li>
+      <li>When enabled, transcripts are stored only in a local folder on this PC (<code id="transcript-dir">-</code>)
+      and are never transmitted anywhere.</li>
+    </ul>
+
+    <p><b>What you're responsible for, as the operator:</b></p>
+    <ul>
+      <li>If your event captions someone else's speech, that recognised text can be personal data under
+      GDPR. You (or your organisation) are the data controller for that processing &mdash; this software
+      is just a tool.</li>
+      <li>Consider telling speakers/attendees that live captioning is in use.</li>
+      <li>If you turn transcript saving on, have a plan for how long you keep those files and how you'll
+      delete them when they're no longer needed.</li>
+      <li>Secure the PC and local network this runs on, the same as you would for any other AV equipment
+      handling live audio.</li>
+    </ul>
+  </div>
+
+<script>
+fetch("/api/about").then(r => r.json()).then(data => {
+  const rows = [
+    ["App version", data.app_version],
+    ["Speech recognition engine", data.asr_engine],
+    ["AI model", data.model_name],
+    ["Model source", `<a href="${data.model_source_url}" target="_blank">${data.model_source_url}</a>`],
+    ["Decoding", "Modified beam search, local ONNX Runtime inference"],
+    ["Runs offline?", "Yes, after the one-time model download during setup"],
+    ["Transcript saving", data.save_transcript ? "Currently ON" : "Currently OFF (default)"],
+  ];
+  const table = document.getElementById("about-table");
+  table.innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  document.getElementById("transcript-dir").textContent = data.transcript_dir;
+});
+</script>
+</body>
+</html>

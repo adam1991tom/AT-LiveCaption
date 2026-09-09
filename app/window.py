@@ -6,12 +6,11 @@ icon or the caption server -- a window crashing can't take either down.
 """
 from __future__ import annotations
 
-import os
-
 import webview
 
-PORT = int(os.environ.get("AT_LIVECAPTION_PORT", 8765))
-BASE_URL = f"http://127.0.0.1:{PORT}"
+from app.core.procutil import get_base_url
+
+BASE_URL = get_base_url()
 
 PAGES = {
     "control": ("AT LiveCaption - Control", "/", 1100, 850),

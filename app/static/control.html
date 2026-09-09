@@ -62,10 +62,11 @@
     <h1>AT LiveCaption</h1>
   </div>
   <div class="sub">
-    <span>v0.5.1 &mdash; local streaming captions, no cloud, no internet required after install</span>
+    <span id="version-line">v&hellip; &mdash; local streaming captions, no cloud, no internet required after install</span>
     <span class="theme-picker">
       Theme
       <select id="theme-select"></select>
+      <a class="link-btn" href="/about" target="_blank" style="margin-left:12px;">About &amp; Privacy</a>
     </span>
   </div>
 
@@ -102,6 +103,9 @@
     <div>
       <button id="btn-test">TEST CAPTION</button>
       <button class="danger" id="btn-clear">CLEAR CAPTIONS</button>
+    </div>
+    <div style="margin-top:12px; font-size:13px; color:#ccc;">
+      <label><input type="checkbox" id="chk-transcript"> Save session transcript to disk (finalised captions only, never audio &mdash; off by default)</label>
     </div>
   </div>
 
@@ -157,6 +161,11 @@ const FIELD_SPECS = [
   ["fade_seconds", "Fade duration (s)", "number"],
 ];
 
+fetch("/api/about").then(r => r.json()).then(data => {
+  document.getElementById("version-line").textContent =
+    `v${data.app_version} — local streaming captions, no cloud, no internet required after install`;
+});
+
 const THEME_ACCENTS = { blue: "#069cfb", green: "#22c55e", purple: "#a855f7", orange: "#f97316" };
 let currentAccent = THEME_ACCENTS.blue;
 
@@ -195,6 +204,7 @@ const LOADING_MESSAGES = {
   model_checking: "Checking speech model...",
   model_downloading: "Downloading speech model (first run only)...",
   model_extracting: "Extracting speech model...",
+  model_error: "Something went wrong loading the speech model. Check the tray app's logs, or try restarting AT LiveCaption.",
 };
 function updateLoadingOverlay(engine) {
   if (loadingHidden) return;
@@ -277,6 +287,12 @@ document.getElementById("save-overlay").onclick = () => {
 
 document.getElementById("btn-test").onclick = () => fetch("/api/test-caption", { method: "POST" });
 document.getElementById("btn-clear").onclick = () => fetch("/api/clear", { method: "POST" });
+
+const chkTranscript = document.getElementById("chk-transcript");
+fetch("/api/transcript").then(r => r.json()).then(data => { chkTranscript.checked = data.enabled; });
+chkTranscript.onchange = () => {
+  fetch("/api/transcript", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ enabled: chkTranscript.checked }) });
+};
 
 const gainSlider = document.getElementById("gain-slider");
 const gainValue = document.getElementById("gain-value");

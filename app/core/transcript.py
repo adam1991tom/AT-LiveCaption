@@ -18,6 +18,9 @@ class TranscriptWriter:
             self._path = self.dir / f"{stamp}.txt"
         return self._path
 
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+
     def write_final(self, text: str) -> None:
         if not self.enabled or not text.strip():
             return
