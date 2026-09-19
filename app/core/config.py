@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.dsp import EQ_BANDS_HZ
+from app.core.model_download import MODEL_NAME
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -22,9 +23,7 @@ else:
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 CONFIG_PATH = DATA_DIR / "config.json"
-MODEL_DIR_DEFAULT = str(
-    DATA_DIR / "models" / "sherpa-onnx-streaming-zipformer-en-2023-06-26"
-)
+MODEL_DIR_DEFAULT = str(DATA_DIR / "models" / MODEL_NAME)
 
 THEMES = ["blue", "green", "purple", "orange"]
 
@@ -37,6 +36,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "theme": "blue",
     "audio_gain_db": 0.0,
     "eq_band_gains_db": [0.0] * len(EQ_BANDS_HZ),
+    "vocabulary": [],
+    "hotwords_score": 2.5,
+    "trusted_control_devices": [],
+    "gpu_acceleration": False,
     "appearance": {
         "audience": {
             "font_family": "Arial, sans-serif",
@@ -99,7 +102,17 @@ def load_config() -> dict[str, Any]:
         # for the rest of the process. Deep-copy first so every call gets
         # its own independent tree regardless of how much of it gets merged.
         default_copy = json.loads(json.dumps(DEFAULT_CONFIG))
-        return _deep_merge(default_copy, on_disk)
+        merged = _deep_merge(default_copy, on_disk)
+
+        # A persisted model_dir from a previous version pointing at a model
+        # this build no longer knows the filenames for is stale, not a user
+        # preference -- upgrading the shipped model must not require every
+        # existing install to somehow migrate its own config by hand.
+        if Path(merged.get("model_dir", "")).name != MODEL_NAME:
+            merged["model_dir"] = MODEL_DIR_DEFAULT
+            save_config(merged)
+
+        return merged
 
 
 def save_config(config: dict[str, Any]) -> None:

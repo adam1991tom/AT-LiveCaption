@@ -6,14 +6,20 @@
 <link rel="icon" id="favicon" href="/static/branding/at_gear_blue.png">
 <style>
   :root { --accent: #069cfb; }
-  body { font-family: Segoe UI, Arial, sans-serif; background: #14161a; color: #eee; margin: 0; padding: 24px; }
-  .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
-  .brand-row img { width: 40px; height: 40px; }
-  h1 { font-size: 20px; margin: 0; }
-  .sub { color: #888; margin-bottom: 20px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; }
+  html, body { height: 100%; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #14161a; color: #eee; margin: 0; padding: 20px 24px; display: flex; flex-direction: column; box-sizing: border-box; min-height: 100vh; }
+  .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex: none; }
+  .brand-row img { width: 36px; height: 36px; }
+  h1 { font-size: 19px; margin: 0; }
+  .top-actions { margin-left: auto; display: flex; gap: 10px; }
+  .btn-open { background: var(--accent); color: #fff; text-decoration: none; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-open.secondary { background: #3a3f4b; }
+  .btn-open:hover { filter: brightness(1.1); }
+  .sub { color: #888; margin-bottom: 14px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; flex: none; }
   .theme-picker { display: flex; align-items: center; gap: 6px; }
   .theme-picker select { padding: 4px 6px; }
-  .panel { background: #1f2229; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  .panel { background: #1f2229; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px; }
+  .col h3 { margin: 0 0 10px; font-size: 14px; color: #ccc; }
   .status-row { display: flex; gap: 24px; flex-wrap: wrap; }
   .status-item { font-size: 14px; }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #666; }
@@ -30,7 +36,7 @@
   a.link-btn { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 14px; }
   .cols { display: flex; gap: 24px; flex-wrap: wrap; }
   .col { flex: 1; min-width: 280px; }
-  .field { margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .field { margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .field label { font-size: 13px; color: #ccc; }
   .field input, .field select { width: 140px; }
   .gain-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
@@ -40,6 +46,48 @@
   #eq-canvas-wrap { width: 100%; height: 260px; }
   #eq-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; border-radius: 6px; }
   .eq-hint { font-size: 11px; color: #777; margin-top: 8px; }
+  #preview .conf-mid { color: #f5a623; }
+  #preview .conf-low { color: #ff6b6b; text-decoration: underline wavy #ff6b6b; text-decoration-thickness: 1px; }
+  textarea#vocab-textarea { background: #12141a; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 8px; width: 100%; height: 140px; box-sizing: border-box; font-family: inherit; font-size: 13px; resize: vertical; }
+  .hint { font-size: 11px; color: #777; margin-top: 6px; }
+  .skipped-note { font-size: 12px; color: #f5a623; margin-top: 8px; }
+  .update-check { font-size: 13px; color: #ccc; margin-top: 10px; line-height: 1.6; }
+  .update-check .ok { color: #35d07f; }
+  .update-check .avail { color: #f5a623; }
+  .export-links a { font-size: 11px; color: #777; text-decoration: none; margin-left: 10px; }
+  .export-links a:hover { color: var(--accent); }
+  .pairing-code-box { background: #2a2416; border: 1px solid #f5a623; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pairing-code-box .code { font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #f5a623; }
+  .pairing-code-box .meta { font-size: 12px; color: #999; }
+  .addr-row, .screen-row, .trusted-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2a2e38; font-size: 14px; }
+  .addr-row:last-child, .screen-row:last-child, .trusted-row:last-child { border-bottom: none; }
+  .addr-row code, .screen-row code { background: #12141a; border-radius: 4px; padding: 4px 8px; color: var(--accent); font-size: 13px; }
+  .screen-row a { color: var(--accent); text-decoration: none; }
+  .access-steps { font-size: 13px; color: #ccc; line-height: 1.8; margin: 0; padding-left: 20px; }
+  .trusted-row button { padding: 5px 10px; font-size: 12px; }
+  .transcript-group-header { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 4px; }
+  .transcript-group-header:first-child { margin-top: 0; }
+  .transcript-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid #2a2e38; font-size: 13px; flex-wrap: wrap; }
+  .transcript-row:last-child { border-bottom: none; }
+  .transcript-row .t-name { color: var(--accent); text-decoration: none; }
+  .transcript-row .t-meta { color: #777; font-size: 12px; }
+  .transcript-row .t-actions { display: flex; align-items: center; gap: 6px; }
+  .transcript-row .t-actions button { padding: 4px 9px; font-size: 11px; margin: 0; }
+  .transcript-row .t-actions a { font-size: 11px; color: #777; text-decoration: none; }
+  .transcript-row .t-actions a:hover { color: var(--accent); }
+  .transcript-edit-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #2a2e38; }
+  .transcript-edit-row input { flex: 1; min-width: 0; }
+  .transcript-edit-row button { padding: 5px 10px; font-size: 12px; margin: 0; }
+
+  /* Tabs -- keeps each section's content off-screen until picked, so the
+     window's fixed size (see app/window.py PAGES) rarely needs to scroll. */
+  .tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid #2a2e38; flex: none; }
+  .tab-btn { background: transparent; color: #999; border: none; border-radius: 0; padding: 9px 18px; font-size: 14px; cursor: pointer; margin: 0; border-bottom: 2px solid transparent; }
+  .tab-btn:hover { color: #eee; }
+  .tab-btn.active { color: #fff; border-bottom-color: var(--accent); }
+  .tab-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .tab-pane[hidden] { display: none; }
+
   #loading-overlay {
     position: fixed; inset: 0; background: #14161a; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 18px; z-index: 1000; transition: opacity 0.4s ease;
@@ -60,17 +108,24 @@
   <div class="brand-row">
     <img id="brand-logo" src="/static/branding/at_gear_blue.png" alt="">
     <h1>AT LiveCaption</h1>
+    <div class="top-actions">
+      <a class="btn-open" href="/audience" target="_blank">&#128225; Audience Screen</a>
+      <a class="btn-open secondary" href="/overlay" target="_blank">&#127909; Camera Overlay</a>
+    </div>
   </div>
   <div class="sub">
     <span id="version-line">v&hellip; &mdash; local streaming captions, no cloud, no internet required after install</span>
     <span class="theme-picker">
       Theme
       <select id="theme-select"></select>
-      <a class="link-btn" href="/about" target="_blank" style="margin-left:12px;">About &amp; Privacy</a>
+      <a class="link-btn" href="#" id="btn-check-updates" style="margin-left:12px;">Check for Updates</a>
+      <a class="link-btn" href="/about" target="_blank">About &amp; Privacy</a>
     </span>
   </div>
+  <div id="update-check-result" class="update-check" style="display:none;"></div>
+  <div id="pairing-banner" style="display:none;"></div>
 
-  <div class="panel">
+  <div class="panel" style="flex: none;">
     <div class="status-row">
       <div class="status-item"><span class="dot" id="dot-engine"></span>ENGINE <span id="txt-engine">-</span></div>
       <div class="status-item"><span class="dot" id="dot-audio"></span>AUDIO <span id="txt-audio">-</span></div>
@@ -87,60 +142,134 @@
       <div class="status-item">GPU MEM <span id="txt-gpu-mem">-</span></div>
       <div class="status-item">GPU TEMP <span id="txt-gpu-temp">-</span></div>
     </div>
-  </div>
-
-  <div class="panel">
-    <div style="margin-bottom:8px; font-size:13px; color:#999;">LIVE PREVIEW</div>
-    <div id="preview"></div>
-  </div>
-
-  <div class="panel">
-    <div style="margin-bottom:10px;">
-      <select id="device-select"></select>
-      <button id="btn-use-device">Use this device</button>
-      <button class="secondary" id="btn-refresh-devices">Refresh</button>
-    </div>
-    <div>
-      <button id="btn-test">TEST CAPTION</button>
-      <button class="danger" id="btn-clear">CLEAR CAPTIONS</button>
-    </div>
-    <div style="margin-top:12px; font-size:13px; color:#ccc;">
-      <label><input type="checkbox" id="chk-transcript"> Save session transcript to disk (finalised captions only, never audio &mdash; off by default)</label>
+    <div class="status-row" style="margin-top:12px; align-items:center;">
+      <label class="status-item" style="cursor:pointer;">
+        <input type="checkbox" id="chk-gpu-accel"> Use NVIDIA GPU for speech recognition (experimental)
+      </label>
+      <span class="status-item" id="gpu-accel-note" style="color:#999;"></span>
     </div>
   </div>
 
-  <div class="panel">
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-      <div style="font-size:13px; color:#999;">MIC GAIN &amp; GRAPHIC EQ</div>
-      <button class="secondary" id="btn-eq-reset">Reset</button>
-    </div>
-    <div class="gain-row">
-      <label for="gain-slider">Gain</label>
-      <input type="range" id="gain-slider" min="-20" max="20" step="0.5" value="0">
-      <span id="gain-value" class="eq-value">0.0 dB</span>
-    </div>
-    <div id="eq-canvas-wrap">
-      <canvas id="eq-canvas"></canvas>
-    </div>
-    <div class="eq-hint">Drag the dots to shape the EQ. The filled curve behind them is the live input spectrum (RTA).</div>
+  <div class="tabs">
+    <button class="tab-btn" data-tab="live">Live</button>
+    <button class="tab-btn" data-tab="audio">Audio &amp; EQ</button>
+    <button class="tab-btn" data-tab="vocabulary">Vocabulary</button>
+    <button class="tab-btn" data-tab="transcript">Transcript</button>
+    <button class="tab-btn" data-tab="appearance">Appearance</button>
+    <button class="tab-btn" data-tab="access">Access</button>
   </div>
 
-  <div class="panel">
-    <a class="link-btn" href="/audience" target="_blank">Open Audience Screen &#8599;</a>
-    <a class="link-btn" href="/overlay" target="_blank">Open Camera Overlay &#8599;</a>
-  </div>
-
-  <div class="panel">
-    <div class="cols">
-      <div class="col">
-        <h3>Audience Appearance</h3>
-        <div id="audience-fields"></div>
-        <button id="save-audience">Save</button>
+  <div class="tab-content">
+    <div class="tab-pane" id="tab-live" hidden>
+      <div class="panel">
+        <div style="margin-bottom:8px; font-size:13px; color:#999;">LIVE PREVIEW</div>
+        <div id="preview"></div>
+        <div class="hint">Words the engine wasn't confident about are highlighted here only &mdash; audience-facing screens always show plain text.</div>
       </div>
-      <div class="col">
-        <h3>Camera Overlay Appearance</h3>
-        <div id="overlay-fields"></div>
-        <button id="save-overlay">Save</button>
+      <div class="panel">
+        <button id="btn-test">TEST CAPTION</button>
+        <button class="danger" id="btn-clear">CLEAR CAPTIONS</button>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-audio" hidden>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">MICROPHONE</div>
+        <select id="device-select"></select>
+        <button id="btn-use-device">Use this device</button>
+        <button class="secondary" id="btn-refresh-devices">Refresh</button>
+      </div>
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div style="font-size:13px; color:#999;">MIC GAIN &amp; GRAPHIC EQ</div>
+          <button class="secondary" id="btn-eq-reset">Reset</button>
+        </div>
+        <div class="gain-row">
+          <label for="gain-slider">Gain</label>
+          <input type="range" id="gain-slider" min="-20" max="20" step="0.5" value="0">
+          <span id="gain-value" class="eq-value">0.0 dB</span>
+        </div>
+        <div id="eq-canvas-wrap">
+          <canvas id="eq-canvas"></canvas>
+        </div>
+        <div class="eq-hint">Drag the dots to shape the EQ. The filled curve behind them is the live input spectrum (RTA).</div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-vocabulary" hidden>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">CUSTOM VOCABULARY</div>
+        <textarea id="vocab-textarea" placeholder="One name, term, or phrase per line -- e.g.&#10;Kubernetes&#10;Zbigniew&#10;Anthropic"></textarea>
+        <div class="hint">Boosts recognition of names, jargon, or acronyms specific to this event. Approximate: the engine tokenizes each phrase itself, so unusual spellings may not always take.</div>
+        <div class="gain-row" style="margin-top:14px;">
+          <label for="hotwords-score-slider" style="width:110px;">Boost strength</label>
+          <input type="range" id="hotwords-score-slider" min="0.5" max="6" step="0.5" value="2.5">
+          <span id="hotwords-score-value" class="eq-value">2.5</span>
+        </div>
+        <button id="btn-save-vocab" style="margin-top:10px;">Save &amp; Apply</button>
+        <div id="vocab-skipped" class="skipped-note" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-transcript" hidden>
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div style="font-size:13px; color:#ccc;">
+            <span class="dot" id="transcript-dot"></span>
+            <span id="transcript-status-text">Not recording</span>
+          </div>
+          <div>
+            <button id="btn-transcript-start">Start Recording</button>
+            <button class="danger" id="btn-transcript-stop" style="display:none;">Stop Recording</button>
+          </div>
+        </div>
+        <div class="hint">Finalised captions only, never audio &mdash; off by default. Start always begins a brand-new file, even if you stopped and started again this session.</div>
+      </div>
+      <div class="panel">
+        <div style="font-size:12px; color:#999; margin-bottom:6px;">SAVED TRANSCRIPTS</div>
+        <div id="transcript-list"></div>
+        <div id="transcript-empty" class="hint" style="display:none;">No transcripts saved yet.</div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-appearance" hidden>
+      <div class="panel">
+        <div class="cols">
+          <div class="col">
+            <h3>Audience Appearance</h3>
+            <div id="audience-fields"></div>
+            <button id="save-audience">Save</button>
+          </div>
+          <div class="col">
+            <h3>Camera Overlay Appearance</h3>
+            <div id="overlay-fields"></div>
+            <button id="save-overlay">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tab-access" hidden>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">THIS COMPUTER'S ADDRESS</div>
+        <div id="lan-addresses"></div>
+        <div class="hint">On another device on the same WiFi/network, try one of these &mdash; if the first doesn't work, try another.</div>
+      </div>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">SCREENS FOR OTHER DEVICES</div>
+        <div id="screen-links"></div>
+        <div class="hint">These open directly with no approval needed &mdash; anyone on this network can view them.</div>
+      </div>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">PAIR A NEW DEVICE FOR CONTROL PANEL ACCESS</div>
+        <ol class="access-steps">
+          <li>Have them open the address above in a browser (not /audience or /overlay &mdash; just the address itself) &mdash; this alone pops up a code at the top of this page.</li>
+          <li>Or click "Generate Code" below to get one ready ahead of time.</li>
+          <li>Either way, tell them the code (out loud, or show them your screen) and have them enter it.</li>
+        </ol>
+        <button id="btn-generate-code">Generate Code</button>
+        <div style="font-size:12px; color:#999; margin: 18px 0 6px;">TRUSTED DEVICES</div>
+        <div id="trusted-devices-list" style="font-size:13px;"></div>
       </div>
     </div>
   </div>
@@ -160,6 +289,26 @@ const FIELD_SPECS = [
   ["hold_seconds", "Hold before fade (s)", "number"],
   ["fade_seconds", "Fade duration (s)", "number"],
 ];
+
+// ---- Tabs ------------------------------------------------------------------
+function showTab(name) {
+  document.querySelectorAll(".tab-pane").forEach(p => { p.hidden = p.id !== "tab-" + name; });
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  try { localStorage.setItem("at_lc_tab", name); } catch (e) {}
+  if (name === "audio") resizeEqCanvas();
+  if (name === "access") loadAccessTab();
+}
+document.querySelectorAll(".tab-btn").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
+let initialTab = "live";
+try { initialTab = localStorage.getItem("at_lc_tab") || "live"; } catch (e) {}
+if (!document.getElementById("tab-" + initialTab)) initialTab = "live";
+// Deferred to the end of this script (see call site there): showTab()
+// calls resizeEqCanvas() when restoring the Audio & EQ tab, but eqCanvas
+// isn't declared (const, so it's in its temporal-dead-zone) until later in
+// this same file -- calling it this early threw a ReferenceError that
+// silently aborted the rest of the script, including the WebSocket setup,
+// leaving the whole page stuck on the loading spinner forever whenever
+// that tab happened to be the one remembered from last time.
 
 fetch("/api/about").then(r => r.json()).then(data => {
   document.getElementById("version-line").textContent =
@@ -285,13 +434,342 @@ document.getElementById("save-overlay").onclick = () => {
   fetch("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({overlay: collectFields("overlay")}) });
 };
 
+// ---- Device pairing: a code shows up here (top of page, any tab) either
+// because the admin clicked Generate Code, or because another device just
+// loaded /request-access and pinged this page automatically. ----------------
+const pairingBanner = document.getElementById("pairing-banner");
+let pairingCountdownTimer = null;
+
+// Event delegation on this always-present banner element, not on the
+// buttons themselves -- the buttons get destroyed and recreated every time
+// the banner re-renders (e.g. the countdown tick), so binding directly to
+// them raced the re-render and could leave a click hitting a dead button.
+pairingBanner.addEventListener("click", (e) => {
+  if (e.target.id === "btn-disable-code") disablePairingCode();
+});
+document.getElementById("btn-generate-code").addEventListener("click", generatePairingCode);
+
+function renderPairingCode(data) {
+  clearInterval(pairingCountdownTimer);
+  if (!data || !data.active) {
+    pairingBanner.style.display = "none";
+    pairingBanner.innerHTML = "";
+    return;
+  }
+  pairingBanner.style.display = "block";
+  let remaining = Math.max(0, Math.round(data.expires_in));
+  const paint = () => {
+    const mins = Math.floor(remaining / 60);
+    const secs = String(remaining % 60).padStart(2, "0");
+    pairingBanner.innerHTML =
+      `<div class="pairing-code-box">` +
+      `<span>Share this code with the device requesting access:</span>` +
+      `<span class="code">${data.code}</span>` +
+      `<span class="meta">Expires in ${mins}:${secs}</span>` +
+      `<button class="danger" id="btn-disable-code">Disable</button>` +
+      `</div>`;
+  };
+  paint();
+  pairingCountdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) { renderPairingCode({ active: false }); return; }
+    paint();
+  }, 1000);
+}
+
+function generatePairingCode() {
+  fetch("/api/pairing-code", { method: "POST" }).then(r => r.json()).then(data => renderPairingCode({ active: true, ...data }));
+}
+
+function disablePairingCode() {
+  fetch("/api/pairing-code/disable", { method: "POST" }).then(() => renderPairingCode({ active: false }));
+}
+
+function loadPairingCode() {
+  fetch("/api/pairing-code").then(r => r.json()).then(renderPairingCode);
+}
+loadPairingCode(); // in case a code from before this page loaded (or a previous session) is still live
+
+// ---- Access tab: this machine's address, screen links, trusted devices ----
+function loadNetworkAndScreens() {
+  fetch("/api/network-info").then(r => r.json()).then(data => {
+    const addrWrap = document.getElementById("lan-addresses");
+    const screenWrap = document.getElementById("screen-links");
+    if (!data.addresses.length) {
+      addrWrap.innerHTML = `<div class="hint">No network address detected -- is this device connected to WiFi or Ethernet?</div>`;
+      screenWrap.innerHTML = "";
+      return;
+    }
+    addrWrap.innerHTML = data.addresses.map(ip =>
+      `<div class="addr-row"><code>http://${ip}:${data.port}</code></div>`
+    ).join("");
+    const primary = data.addresses[0];
+    screenWrap.innerHTML = [
+      ["Audience Screen", "audience"],
+      ["Camera Overlay", "overlay"],
+    ].map(([label, path]) => {
+      const url = `http://${primary}:${data.port}/${path}`;
+      return `<div class="screen-row"><span>${label}</span><a href="${url}" target="_blank"><code>${url}</code></a></div>`;
+    }).join("");
+  });
+}
+
+function loadTrustedDevices() {
+  fetch("/api/trusted-devices").then(r => r.json()).then(data => {
+    const wrap = document.getElementById("trusted-devices-list");
+    if (!data.devices.length) {
+      wrap.innerHTML = `<div class="hint">No other devices trusted yet -- generate a code above to pair one.</div>`;
+      return;
+    }
+    wrap.innerHTML = data.devices.map(d =>
+      `<div class="trusted-row"><span>${d}</span><button class="danger" data-device="${d}">Remove</button></div>`
+    ).join("");
+  });
+}
+
+document.getElementById("trusted-devices-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-device]");
+  if (!btn) return;
+  fetch("/api/trusted-devices/remove", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ device: btn.dataset.device }),
+  }).then(loadTrustedDevices);
+});
+
+function loadAccessTab() {
+  loadNetworkAndScreens();
+  loadTrustedDevices();
+  loadPairingCode();
+}
+
 document.getElementById("btn-test").onclick = () => fetch("/api/test-caption", { method: "POST" });
 document.getElementById("btn-clear").onclick = () => fetch("/api/clear", { method: "POST" });
 
-const chkTranscript = document.getElementById("chk-transcript");
-fetch("/api/transcript").then(r => r.json()).then(data => { chkTranscript.checked = data.enabled; });
-chkTranscript.onchange = () => {
-  fetch("/api/transcript", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ enabled: chkTranscript.checked }) });
+// ---- Transcript recording: Start/Stop + per-file rename/group/delete ------
+function loadTranscriptStatus() {
+  fetch("/api/transcript").then(r => r.json()).then(data => {
+    const dot = document.getElementById("transcript-dot");
+    const text = document.getElementById("transcript-status-text");
+    document.getElementById("btn-transcript-start").style.display = data.enabled ? "none" : "inline-block";
+    document.getElementById("btn-transcript-stop").style.display = data.enabled ? "inline-block" : "none";
+    if (data.enabled) {
+      dot.className = "dot ok";
+      text.textContent = "Recording to " + data.current_file;
+    } else {
+      dot.className = "dot";
+      text.textContent = "Not recording";
+    }
+  });
+}
+loadTranscriptStatus();
+
+document.getElementById("btn-transcript-start").onclick = () => {
+  fetch("/api/transcript/start", { method: "POST" }).then(() => {
+    loadTranscriptStatus();
+    loadTranscriptList();
+  });
+};
+document.getElementById("btn-transcript-stop").onclick = () => {
+  fetch("/api/transcript/stop", { method: "POST" }).then(() => {
+    loadTranscriptStatus();
+    loadTranscriptList();
+  });
+};
+
+function formatBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function transcriptApiBase(relpath) {
+  return "/api/transcripts/" + relpath.split("/").map(encodeURIComponent).join("/");
+}
+
+// { relpath, mode: "rename"|"group" } while an inline editor is open for one
+// row -- the periodic refresh skips rebuilding the list while this is set,
+// so it can't wipe out text the operator is mid-typing.
+let transcriptEditing = null;
+
+function transcriptRowHtml(f) {
+  const base = transcriptApiBase(f.relpath);
+  if (transcriptEditing && transcriptEditing.relpath === f.relpath) {
+    const err = transcriptEditing.error
+      ? `<div style="width:100%; color:#e5484d; font-size:12px;">${transcriptEditing.error}</div>` : "";
+    if (transcriptEditing.mode === "rename") {
+      const current = f.filename.replace(/\.txt$/i, "");
+      return `<div class="transcript-edit-row" style="flex-wrap:wrap;">` +
+        `<input type="text" class="rename-input" value="${current.replace(/"/g, "&quot;")}">` +
+        `<button data-act="save-rename" data-relpath="${f.relpath}">Save</button>` +
+        `<button class="secondary" data-act="cancel-edit">Cancel</button>${err}</div>`;
+    }
+    return `<div class="transcript-edit-row" style="flex-wrap:wrap;">` +
+      `<input type="text" class="group-input" placeholder="Group name (blank = ungrouped)" value="${(f.group || "").replace(/"/g, "&quot;")}">` +
+      `<button data-act="save-group" data-relpath="${f.relpath}">Move</button>` +
+      `<button class="secondary" data-act="cancel-edit">Cancel</button>${err}</div>`;
+  }
+  const date = new Date(f.modified * 1000).toLocaleString();
+  return `<div class="transcript-row">` +
+    `<a href="${base}" target="_blank" class="t-name">${f.filename}</a>` +
+    `<span class="t-meta">${date} &middot; ${formatBytes(f.size_bytes)}</span>` +
+    `<span class="t-actions">` +
+    `<a href="${base}/export.srt" target="_blank">SRT</a>` +
+    `<a href="${base}/export.vtt" target="_blank">VTT</a>` +
+    `<button class="secondary" data-act="rename" data-relpath="${f.relpath}">Rename</button>` +
+    `<button class="secondary" data-act="group" data-relpath="${f.relpath}">Group</button>` +
+    `<button class="danger" data-act="delete" data-relpath="${f.relpath}">Delete</button>` +
+    `</span></div>`;
+}
+
+function renderTranscriptList(files) {
+  const list = document.getElementById("transcript-list");
+  const empty = document.getElementById("transcript-empty");
+  if (!files.length) {
+    list.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+  empty.style.display = "none";
+  const groups = new Map(); // group name ("" = ungrouped) -> files[]
+  files.forEach(f => {
+    const key = f.group || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  });
+  const orderedKeys = [...groups.keys()].sort((a, b) => {
+    if (a === "") return 1; // ungrouped last
+    if (b === "") return -1;
+    return a.localeCompare(b);
+  });
+  list.innerHTML = orderedKeys.map(key => {
+    const header = `<div class="transcript-group-header">${key || "Ungrouped"}</div>`;
+    return header + groups.get(key).map(transcriptRowHtml).join("");
+  }).join("");
+}
+
+function refreshTranscriptList() {
+  fetch("/api/transcripts").then(r => r.json()).then(renderTranscriptList);
+}
+
+function loadTranscriptList() {
+  if (transcriptEditing) return; // don't clobber an open rename/group editor
+  refreshTranscriptList();
+}
+loadTranscriptList();
+setInterval(loadTranscriptList, 10000);
+
+document.getElementById("transcript-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const act = btn.dataset.act;
+  if (act === "cancel-edit") {
+    transcriptEditing = null;
+    loadTranscriptList();
+    return;
+  }
+  if (act === "rename" || act === "group") {
+    transcriptEditing = { relpath: btn.dataset.relpath, mode: act };
+    refreshTranscriptList();
+    return;
+  }
+  if (act === "delete") {
+    fetch(`${transcriptApiBase(btn.dataset.relpath)}/delete`, { method: "POST" }).then(loadTranscriptList);
+    return;
+  }
+  if (act === "save-rename") {
+    const input = btn.closest(".transcript-edit-row").querySelector(".rename-input");
+    fetch(`${transcriptApiBase(btn.dataset.relpath)}/rename`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ name: input.value.trim() }),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        transcriptEditing.error = d.error || "Couldn't rename.";
+        refreshTranscriptList();
+        return;
+      }
+      transcriptEditing = null;
+      loadTranscriptList();
+    });
+    return;
+  }
+  if (act === "save-group") {
+    const input = btn.closest(".transcript-edit-row").querySelector(".group-input");
+    fetch(`${transcriptApiBase(btn.dataset.relpath)}/group`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ group: input.value.trim() }),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        transcriptEditing.error = d.error || "Couldn't move.";
+        refreshTranscriptList();
+        return;
+      }
+      transcriptEditing = null;
+      loadTranscriptList();
+    });
+  }
+});
+
+// ---- Custom vocabulary (hotwords) ------------------------------------------
+const vocabTextarea = document.getElementById("vocab-textarea");
+const hotwordsScoreSlider = document.getElementById("hotwords-score-slider");
+const hotwordsScoreValue = document.getElementById("hotwords-score-value");
+
+fetch("/api/vocabulary").then(r => r.json()).then(data => {
+  vocabTextarea.value = (data.phrases || []).join("\n");
+  hotwordsScoreSlider.value = data.hotwords_score;
+  hotwordsScoreValue.textContent = Number(data.hotwords_score).toFixed(1);
+});
+
+hotwordsScoreSlider.oninput = () => {
+  hotwordsScoreValue.textContent = Number(hotwordsScoreSlider.value).toFixed(1);
+};
+
+document.getElementById("btn-save-vocab").onclick = () => {
+  const btn = document.getElementById("btn-save-vocab");
+  const skippedNote = document.getElementById("vocab-skipped");
+  const phrases = vocabTextarea.value.split("\n").map(s => s.trim()).filter(Boolean);
+  btn.disabled = true;
+  btn.textContent = "Applying...";
+  fetch("/api/vocabulary", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ phrases, hotwords_score: Number(hotwordsScoreSlider.value) }),
+  }).then(r => r.json()).then(data => {
+    btn.disabled = false;
+    btn.textContent = "Save & Apply";
+    if (data.skipped && data.skipped.length) {
+      skippedNote.style.display = "block";
+      skippedNote.textContent = "Couldn't tokenize (skipped): " + data.skipped.join(", ");
+    } else {
+      skippedNote.style.display = "none";
+    }
+  }).catch(() => { btn.disabled = false; btn.textContent = "Save & Apply"; });
+};
+
+// ---- Check for updates ------------------------------------------------------
+document.getElementById("btn-check-updates").onclick = (e) => {
+  e.preventDefault();
+  const link = e.target;
+  const box = document.getElementById("update-check-result");
+  link.textContent = "Checking...";
+  fetch("/api/check-updates", { method: "POST" }).then(r => r.json()).then(data => {
+    link.textContent = "Check for Updates";
+    box.style.display = "block";
+    let html = `App: v${data.app_version} &mdash; <a href="${data.app_releases_url}" target="_blank" style="color:var(--accent);">view releases on GitHub</a> to check for a newer version.<br>`;
+    if (data.model_error) {
+      html += `Model: couldn't check (${data.model_error}) &mdash; likely offline.`;
+    } else {
+      html += `Model: currently <span class="ok">${data.model.current_model}</span>.`;
+      if (data.model.other_dates_available.length) {
+        html += ` Other snapshots also exist (${data.model.other_dates_available.join(", ")}) &mdash; ` +
+          `<a href="${data.model.releases_url}" target="_blank" style="color:var(--accent);">compare on GitHub</a> before switching; a later date isn't automatically better.`;
+      }
+    }
+    box.innerHTML = html;
+  }).catch(() => {
+    link.textContent = "Check for Updates";
+    box.style.display = "block";
+    box.textContent = "Couldn't check for updates -- no internet connection?";
+  });
 };
 
 const gainSlider = document.getElementById("gain-slider");
@@ -358,6 +836,7 @@ function dbToRtaY(db) {
 
 function resizeEqCanvas() {
   const rect = eqCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return; // tab not visible yet -- showTab() retries this
   eqCanvas.width = Math.max(300, Math.round(rect.width));
   eqCanvas.height = Math.max(150, Math.round(rect.height));
   drawEq();
@@ -565,6 +1044,36 @@ document.getElementById("btn-refresh-devices").onclick = () => {
   }).catch(() => { btn.disabled = false; });
 };
 
+// ---- GPU acceleration (experimental, NVIDIA-only) --------------------------
+const chkGpuAccel = document.getElementById("chk-gpu-accel");
+const gpuAccelNote = document.getElementById("gpu-accel-note");
+
+function renderGpuStatus(data) {
+  chkGpuAccel.checked = data.enabled;
+  if (!data.enabled) {
+    gpuAccelNote.textContent = "";
+  } else if (data.active) {
+    gpuAccelNote.textContent = "Active" + (data.detected_gpu_name ? " (" + data.detected_gpu_name + ")" : "");
+  } else if (!data.build_supports_gpu) {
+    gpuAccelNote.textContent = "Not active -- this build has no GPU support compiled in, using CPU.";
+  } else {
+    gpuAccelNote.textContent = "Not active -- falling back to CPU.";
+  }
+}
+
+fetch("/api/gpu").then(r => r.json()).then(renderGpuStatus);
+
+chkGpuAccel.onchange = () => {
+  chkGpuAccel.disabled = true;
+  gpuAccelNote.textContent = "Applying...";
+  fetch("/api/gpu", {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ enabled: chkGpuAccel.checked }),
+  }).then(r => r.json()).then((data) => {
+    chkGpuAccel.disabled = false;
+    renderGpuStatus(data);
+  }).catch(() => { chkGpuAccel.disabled = false; });
+};
+
 function setDot(id, state) {
   const el = document.getElementById(id);
   el.className = "dot " + state;
@@ -575,10 +1084,42 @@ function levelToPct(db) {
   return ((clamped + 60) / 60) * 100;
 }
 
-const finals = [];
-let partial = "";
+const finals = []; // each entry: {text, words}
+let partialEntry = null; // {text, words} or null
+
+function confClass(confidence) {
+  if (confidence >= 0.7) return "";
+  if (confidence >= 0.4) return "conf-mid";
+  return "conf-low";
+}
+
+function appendEntry(container, entry) {
+  if (!entry.words || !entry.words.length) {
+    container.appendChild(document.createTextNode(entry.text));
+    return;
+  }
+  entry.words.forEach((w, i) => {
+    if (i > 0) container.appendChild(document.createTextNode(" "));
+    const cls = confClass(w.confidence);
+    if (!cls) {
+      container.appendChild(document.createTextNode(w.text));
+      return;
+    }
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = w.text;
+    container.appendChild(span);
+  });
+}
+
 function renderPreview() {
-  document.getElementById("preview").textContent = finals.slice(-3).concat(partial ? [partial] : []).join("  /  ");
+  const preview = document.getElementById("preview");
+  preview.innerHTML = "";
+  const entries = finals.slice(-3).concat(partialEntry ? [partialEntry] : []);
+  entries.forEach((entry, i) => {
+    if (i > 0) preview.appendChild(document.createTextNode("  /  "));
+    appendEntry(preview, entry);
+  });
 }
 
 const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -601,6 +1142,8 @@ ws.onmessage = (evt) => {
     updateLoadingOverlay(msg.engine);
   } else if (msg.type === "appearance") {
     if (msg.theme) applyTheme(msg.theme);
+  } else if (msg.type === "pairing_requested") {
+    loadPairingCode();
   } else if (msg.type === "rta") {
     eq.rtaBands = msg.bands_db;
     drawEq();
@@ -611,15 +1154,25 @@ ws.onmessage = (evt) => {
     document.getElementById("txt-gpu-mem").textContent = msg.gpu_mem_used_mb === null ? "N/A" : msg.gpu_mem_used_mb + " / " + msg.gpu_mem_total_mb + " MB";
     document.getElementById("txt-gpu-temp").textContent = msg.gpu_temp_c === null ? "N/A" : msg.gpu_temp_c.toFixed(0) + "°C";
   } else if (msg.type === "sync") {
-    finals.length = 0; finals.push(...msg.recent_finals); partial = msg.partial || ""; renderPreview();
+    // Historic finals from the hub only ever carry plain text (see hub.py) --
+    // no per-word confidence, so they render with no highlighting.
+    finals.length = 0;
+    finals.push(...msg.recent_finals.map(t => ({ text: t, words: [] })));
+    partialEntry = msg.partial ? { text: msg.partial, words: [] } : null;
+    renderPreview();
   } else if (msg.type === "final") {
-    finals.push(msg.text); partial = ""; renderPreview();
+    finals.push({ text: msg.text, words: msg.words || [] }); partialEntry = null; renderPreview();
   } else if (msg.type === "partial") {
-    partial = msg.text; renderPreview();
+    partialEntry = { text: msg.text, words: msg.words || [] }; renderPreview();
   } else if (msg.type === "clear") {
-    finals.length = 0; partial = ""; renderPreview();
+    finals.length = 0; partialEntry = null; renderPreview();
   }
 };
+
+// Restore whichever tab was last open now that everything it might touch
+// (eqCanvas included) is actually declared -- see the comment where
+// initialTab was computed, near the top of this script.
+showTab(initialTab);
 </script>
 </body>
 </html>

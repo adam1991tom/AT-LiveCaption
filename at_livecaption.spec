@@ -25,23 +25,37 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# onedir, not onefile: a onefile build re-extracts the whole app to a fresh
+# %TEMP%\_MEI... folder on every single launch before any Python here runs.
+# Two overlapping launches race that extraction step natively, before our
+# own instance lock (or anything else in app_entry.py) gets a chance to run
+# -- that's the actual cause of the pyi_rth_pkgres crashes on double-launch.
+# onedir removes the extraction step entirely: the exe just runs directly
+# from an already-unpacked folder.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="ATLiveCaption",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon="branding/ico/at_livecaption_blue.ico",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="ATLiveCaption",
 )

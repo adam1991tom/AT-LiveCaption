@@ -4,6 +4,7 @@ __pycache__/
 models/
 models_test/
 config.json
+hotwords.txt
 transcripts/
 *.tar.bz2
 build/

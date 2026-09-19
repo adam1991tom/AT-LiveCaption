@@ -62,6 +62,34 @@
 
     setInterval(render, 200);
 
+    // The engine can emit a revised partial hypothesis every ~60ms while
+    // someone is talking (see CHUNK_SECONDS in asr_engine.py) -- rendering
+    // every single one is too fast to read and reads as "jumpy" even
+    // though each individual change is small. Trailing-edge throttle: skip
+    // renders that land too soon after the last one, but always schedule a
+    // final render for the latest text so nothing is ever dropped, just
+    // paced out. The operator's own live preview (control.html) is
+    // unaffected -- it renders on every message, since immediacy there
+    // matters more than smoothness.
+    const MIN_PARTIAL_RENDER_MS = 180;
+    let lastPartialRenderAt = 0;
+    let partialRenderTimer = null;
+
+    function scheduleRender() {
+      const elapsed = Date.now() - lastPartialRenderAt;
+      if (elapsed >= MIN_PARTIAL_RENDER_MS) {
+        lastPartialRenderAt = Date.now();
+        render();
+        return;
+      }
+      if (partialRenderTimer) return;
+      partialRenderTimer = setTimeout(() => {
+        partialRenderTimer = null;
+        lastPartialRenderAt = Date.now();
+        render();
+      }, MIN_PARTIAL_RENDER_MS - elapsed);
+    }
+
     function open() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(proto + "://" + location.host + "/ws");
@@ -81,7 +109,7 @@
             break;
           case "partial":
             partial = msg.text;
-            render();
+            scheduleRender();
             break;
           case "final":
             finals.push({ text: msg.text, ts: Date.now() });

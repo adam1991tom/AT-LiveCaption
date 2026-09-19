@@ -34,7 +34,10 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "A
 Name: "startupicon"; Description: "Start AT LiveCaption automatically when Windows starts"; GroupDescription: "Additional options:"; Flags: unchecked
 
 [Files]
-Source: "..\dist\ATLiveCaption.exe"; DestDir: "{app}"; Flags: ignoreversion
+; onedir build: dist\ATLiveCaption\ is a whole folder (the exe plus its
+; supporting DLLs/pyc files), not a single file -- see at_livecaption.spec
+; for why onefile was dropped.
+Source: "..\dist\ATLiveCaption\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\AT LiveCaption"; Filename: "{app}\{#MyAppExeName}"

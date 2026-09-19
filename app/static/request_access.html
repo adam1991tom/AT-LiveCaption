@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AT LiveCaption - Enter Access Code</title>
+<link rel="icon" href="/static/branding/at_gear_blue.png">
+<style>
+  :root { --accent: #069cfb; }
+  body { font-family: Segoe UI, Arial, sans-serif; background: #14161a; color: #eee; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: #1f2229; border-radius: 12px; padding: 36px 40px; max-width: 420px; text-align: center; }
+  .card img { width: 56px; height: 56px; margin-bottom: 14px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .sub { color: #999; font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
+  input#code-input { width: 160px; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; background: #12141a; color: var(--accent); border: 1px solid #333; border-radius: 8px; padding: 10px 0 10px 8px; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 10px 22px; font-size: 14px; cursor: pointer; margin-top: 18px; display: block; margin-left: auto; margin-right: auto; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .status { font-size: 13px; min-height: 18px; margin-top: 14px; }
+  .status.error { color: #e5484d; }
+  .status.ok { color: #35d07f; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img src="/static/branding/at_gear_blue.png" alt="">
+    <h1>Enter Access Code</h1>
+    <div class="sub">A code should now be showing on the main computer's screen &mdash; ask them for it.</div>
+    <form id="code-form">
+      <input type="text" id="code-input" inputmode="numeric" maxlength="4" autofocus autocomplete="off">
+      <button type="submit" id="btn-submit">Submit</button>
+    </form>
+    <div class="status" id="status"></div>
+  </div>
+<script>
+const form = document.getElementById("code-form");
+const input = document.getElementById("code-input");
+const btn = document.getElementById("btn-submit");
+const statusEl = document.getElementById("status");
+
+// Let the main computer know someone's here -- this makes sure a code
+// exists and pops it up on their screen, instead of requiring them to have
+// already generated one before this page was ever loaded.
+fetch("/api/pairing-code/announce", { method: "POST" }).catch(() => {});
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const code = input.value.trim();
+  if (!code) return;
+  btn.disabled = true;
+  statusEl.className = "status";
+  statusEl.textContent = "Checking...";
+  fetch("/api/pairing-redeem", {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ code }),
+  }).then(async (r) => {
+    const data = await r.json().catch(() => ({}));
+    if (r.ok) {
+      statusEl.className = "status ok";
+      statusEl.textContent = "Correct -- loading control panel...";
+      location.href = "/";
+      return;
+    }
+    btn.disabled = false;
+    statusEl.className = "status error";
+    statusEl.textContent = data.error || "That code is incorrect.";
+    input.select();
+  }).catch(() => {
+    btn.disabled = false;
+    statusEl.className = "status error";
+    statusEl.textContent = "Couldn't reach the server -- try again.";
+  });
+});
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ finalised caption text may reach TranscriptWriter).
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import threading
 import time
@@ -26,11 +27,54 @@ CHUNK_SECONDS = 0.06
 SILENCE_FLOOR_DB = -60.0
 
 
+def gpu_provider_available() -> bool:
+    """Whether the installed sherpa-onnx build actually has CUDA support
+    compiled in, checked structurally rather than assumed. The standard
+    PyPI wheel ships a single CPU-only onnxruntime.dll; a GPU-enabled build
+    additionally ships a CUDA execution-provider DLL alongside it. Passing
+    provider="cuda" to a CPU-only build doesn't error -- it just silently
+    falls back to CPU -- so this is the only reliable way to know in
+    advance whether requesting GPU will actually do anything. If a real
+    GPU-enabled build is ever swapped in, this starts returning True with
+    no code changes needed here."""
+    try:
+        from sherpa_onnx._info import libs_dir
+    except ImportError:
+        return False
+    lib_dir = Path(libs_dir)
+    if not lib_dir.is_dir():
+        return False
+    return any(lib_dir.glob("*cuda*")) or any(lib_dir.glob("*provider*"))
+
+
 def _dbfs(samples: np.ndarray) -> float:
     rms = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
     if rms <= 1e-8:
         return SILENCE_FLOOR_DB
     return max(SILENCE_FLOOR_DB, 20.0 * math.log10(rms))
+
+
+def _words_from_tokens(tokens: list[str], ys_probs: list[float]) -> list[dict]:
+    """Sherpa-onnx emits BPE pieces, not words -- a piece starting with a
+    space marks the start of a new word (mid-word pieces don't). Confidence
+    per word is exp(mean log-prob) over its pieces, for the operator-only
+    live-preview highlighting in the control panel (see control.html);
+    audience-facing pages never see this."""
+    words: list[dict] = []
+    cur_text = ""
+    cur_probs: list[float] = []
+    for tok, prob in zip(tokens, ys_probs):
+        if tok.startswith(" "):
+            if cur_text:
+                words.append({"text": cur_text, "confidence": round(math.exp(sum(cur_probs) / len(cur_probs)), 3)})
+            cur_text = tok.strip()
+            cur_probs = [prob]
+        else:
+            cur_text += tok
+            cur_probs.append(prob)
+    if cur_text:
+        words.append({"text": cur_text, "confidence": round(math.exp(sum(cur_probs) / len(cur_probs)), 3)})
+    return words
 
 
 class CaptionEngine:
@@ -47,6 +91,14 @@ class CaptionEngine:
         self.recognizer: Optional[sherpa_onnx.OnlineRecognizer] = None
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # Guards start/stop/load_model/refresh_devices against each other --
+        # each is dispatched from a FastAPI request handler via
+        # run_in_executor, so two requests arriving close together (e.g. a
+        # device change while a vocabulary save is mid-reload) land on
+        # different threads and would otherwise race on self._thread /
+        # self.recognizer. Reentrant because load_model() and
+        # refresh_devices() call self.stop()/self.start() themselves.
+        self._lifecycle_lock = threading.RLock()
         self.device_index: Optional[int] = None
         self.device_name: Optional[str] = None
         self.model_ready = False
@@ -54,6 +106,12 @@ class CaptionEngine:
         self.eq: Optional[dsp.GraphicEQ] = None
         self._gain_db = 0.0
         self._band_gains_db = [0.0] * len(dsp.EQ_BANDS_HZ)
+
+        # Whether GPU was actually used for the currently-loaded model --
+        # not the same as whether it was *requested*: gpu_provider_available()
+        # decides that (see load_model()), so this never silently claims
+        # acceleration a CPU-only build can't actually provide.
+        self.gpu_active = False
 
     # ---- live audio processing --------------------------------------------
     def set_gain_db(self, gain_db: float) -> None:
@@ -84,42 +142,64 @@ class CaptionEngine:
         }
 
     # ---- model -------------------------------------------------------
-    def load_model(self, model_dir: str) -> None:
-        model_path = Path(model_dir)
-        self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
-            tokens=str(model_path / "tokens.txt"),
-            encoder=str(model_path / "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            decoder=str(model_path / "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            joiner=str(model_path / "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            num_threads=2,
-            sample_rate=16000,
-            feature_dim=80,
-            enable_endpoint_detection=True,
-            rule1_min_trailing_silence=2.4,
-            rule2_min_trailing_silence=1.2,
-            rule3_min_utterance_length=300,
-            decoding_method="modified_beam_search",
-            max_active_paths=6,
-            provider="cpu",
-        )
-        self.model_ready = True
+    def load_model(
+        self, model_dir: str, hotwords_file: str = "", hotwords_score: float = 1.5, use_gpu: bool = False
+    ) -> None:
+        with self._lifecycle_lock:
+            model_path = Path(model_dir)
+            was_running = self.is_running()
+            device_index, device_name = self.device_index, self.device_name
+            if was_running:
+                self.stop()
+            # gpu_provider_available() -- not just use_gpu -- decides the
+            # actual provider: requesting "cuda" on a CPU-only build doesn't
+            # error, it silently no-ops to CPU, which would otherwise let
+            # self.gpu_active claim acceleration that never happened.
+            self.gpu_active = use_gpu and gpu_provider_available()
+            self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+                tokens=str(model_path / "tokens.txt"),
+                encoder=str(model_path / "encoder-epoch-99-avg-1.int8.onnx"),
+                decoder=str(model_path / "decoder-epoch-99-avg-1.onnx"),
+                joiner=str(model_path / "joiner-epoch-99-avg-1.int8.onnx"),
+                num_threads=2,
+                sample_rate=16000,
+                feature_dim=80,
+                enable_endpoint_detection=True,
+                rule1_min_trailing_silence=2.4,
+                rule2_min_trailing_silence=1.2,
+                rule3_min_utterance_length=300,
+                decoding_method="modified_beam_search",
+                max_active_paths=6,
+                # hotwords_file is pre-tokenized by app/core/hotwords.py against
+                # this model's own tokens.txt -- no modeling_unit/bpe_vocab
+                # needed (and passing modeling_unit="bpe" without a real
+                # sentencepiece model segfaults the native decoder).
+                hotwords_file=hotwords_file,
+                hotwords_score=hotwords_score,
+                provider="cuda" if self.gpu_active else "cpu",
+            )
+            self.model_ready = True
+            if was_running:
+                self.start(device_index, device_name or "")
 
     # ---- lifecycle -----------------------------------------------------
     def start(self, device_index: int, device_name: str) -> None:
-        self.stop()
-        self.device_index = device_index
-        self.device_name = device_name
-        self._stop_event.clear()
-        self._thread = threading.Thread(
-            target=self._run, args=(device_index, device_name), daemon=True
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            self.stop()
+            self.device_index = device_index
+            self.device_name = device_name
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._run, args=(device_index, device_name), daemon=True
+            )
+            self._thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5)
-        self._thread = None
+        with self._lifecycle_lock:
+            self._stop_event.set()
+            if self._thread and self._thread.is_alive():
+                self._thread.join(timeout=5)
+            self._thread = None
 
     def refresh_devices(self) -> None:
         """Forces PortAudio to notice devices plugged/unplugged since it
@@ -127,13 +207,14 @@ class CaptionEngine:
         stopped first (rescanning while a stream is open is undefined
         behaviour per PortAudio), then restarted on the same device if it's
         still present."""
-        was_running = self.device_index is not None and self.is_running()
-        device_index, device_name = self.device_index, self.device_name
-        if was_running:
-            self.stop()
-        audio_devices.rescan_devices()
-        if was_running:
-            self.start(device_index, device_name)
+        with self._lifecycle_lock:
+            was_running = self.device_index is not None and self.is_running()
+            device_index, device_name = self.device_index, self.device_name
+            if was_running:
+                self.stop()
+            audio_devices.rescan_devices()
+            if was_running:
+                self.start(device_index, device_name)
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -197,16 +278,18 @@ class CaptionEngine:
                             self.recognizer.decode_stream(stream)
 
                         is_endpoint = self.recognizer.is_endpoint(stream)
-                        text = self.recognizer.get_result(stream).strip()
+                        result = json.loads(self.recognizer.get_result_as_json_string(stream))
+                        text = result["text"].strip()
+                        words = _words_from_tokens(result["tokens"], result["ys_probs"]) if text else []
 
                         if is_endpoint:
                             if text:
-                                self._emit({"type": "final", "text": text})
+                                self._emit({"type": "final", "text": text, "words": words})
                                 self.transcript_writer.write_final(text)
                             self.recognizer.reset(stream)
                             last_partial = ""
                         elif text and text != last_partial:
-                            self._emit({"type": "partial", "text": text})
+                            self._emit({"type": "partial", "text": text, "words": words})
                             last_partial = text
 
             except Exception as exc:  # device unplugged, driver error, etc.

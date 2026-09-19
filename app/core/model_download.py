@@ -7,16 +7,16 @@ import tarfile
 import urllib.request
 from pathlib import Path
 
-MODEL_NAME = "sherpa-onnx-streaming-zipformer-en-2023-06-26"
+MODEL_NAME = "sherpa-onnx-streaming-zipformer-en-2023-06-21"
 MODEL_URL = (
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
     f"asr-models/{MODEL_NAME}.tar.bz2"
 )
 REQUIRED_FILES = [
     "tokens.txt",
-    "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-    "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-    "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+    "encoder-epoch-99-avg-1.int8.onnx",
+    "decoder-epoch-99-avg-1.onnx",
+    "joiner-epoch-99-avg-1.int8.onnx",
 ]
 
 

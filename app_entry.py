@@ -8,6 +8,7 @@ browser tab.
 --window=<control|audience|overlay>: shows that one page as a native
 WebView2 window, in its own process.
 """
+import subprocess
 import sys
 
 
@@ -16,6 +17,22 @@ def _window_arg() -> str | None:
         if arg.startswith("--window="):
             return arg.split("=", 1)[1]
     return None
+
+
+_is_tray_launch = "--server" not in sys.argv and _window_arg() is None
+
+if _is_tray_launch:
+    # Checked here, as the very first thing, using only stdlib (no numpy /
+    # sherpa-onnx / dsp import chain yet) -- a second tray launch should
+    # bail out before paying for any of that, not after. This can't close
+    # the PyInstaller onefile bootloader's own extraction race (native code,
+    # runs before any Python here does), but it does close the window after
+    # that point, which is most of the real "opens twice" case.
+    from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock
+
+    if not acquire_tray_instance_lock():
+        subprocess.Popen([sys.executable, "--window=control"], creationflags=CREATIONFLAGS)
+        sys.exit(0)
 
 
 def _redirect_streams_when_windowed() -> None:

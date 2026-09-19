@@ -8,23 +8,128 @@ sent to any external service.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import re
+import secrets
 import threading
+import time
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core import audio_devices, model_download, resources
-from app.core.asr_engine import CaptionEngine
-from app.core.config import THEMES, load_config, save_config
+from app.core import audio_devices, hotwords, model_download, network_info, resources, update_check
+from app.core.asr_engine import CaptionEngine, gpu_provider_available
+from app.core.config import DATA_DIR, THEMES, load_config, save_config
 from app.core.hub import ConnectionHub
-from app.core.transcript import TranscriptWriter
+from app.core.procutil import get_port
+from app.core.transcript import TranscriptWriter, to_srt, to_vtt
 from app import version
+
+HOTWORDS_PATH = DATA_DIR / "hotwords.txt"
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# The server binds 0.0.0.0 (see server_main.py) so the audience screen and
+# camera overlay can be opened from another device on the same network --
+# a phone, or a separate PC driving a projector/TV. But that means, without
+# this, EVERY route including the full control panel, the about/GDPR page,
+# and every /api/* call (change the mic, edit vocabulary, download
+# transcripts) would also be reachable, unauthenticated, by anyone else on
+# that network. Only the exact handful of routes those two read-only
+# display pages need (their own page, the shared static assets, and the
+# broadcast-only websocket) are allowed from off-machine; everything else
+# needs either to be this same machine, or a device the operator has
+# approved through the pairing flow below (config["trusted_control_devices"])
+# -- an allowlist instead of a password, for a second person (e.g. a venue
+# tech) who needs the full control panel from their own laptop.
+_LOCAL_HOSTS = {"127.0.0.1", "::1"}
+_LAN_ALLOWED_EXACT = {"/audience", "/overlay", "/ws", "/request-access"}
+_LAN_ALLOWED_PREFIXES = ("/static/",)
+
+# Pairing flow: an untrusted device that lands on "/" is bounced to
+# /request-access, which asks it to enter a code -- and also pings the admin
+# (POST /api/pairing-code/announce, a websocket "pairing_requested" message)
+# so a code appears on the control panel automatically instead of the admin
+# having to remember to generate one ahead of time. The admin can also
+# generate one proactively from the Access tab. Either way, the code shows
+# up only on the control panel, to be read out to whoever needs it; entering
+# it correctly (POST /api/pairing-redeem, along with the announce call, the
+# only calls an untrusted device is allowed to make on its own behalf)
+# trusts that device's address. One code is live at a time, time-boxed, and
+# auto-invalidated after too many wrong guesses -- the pairing-redeem
+# endpoint has to be reachable by definition by a device we don't trust yet,
+# so the attempt cap is what stands in for rate-limiting against someone
+# just trying every 4-digit combination.
+_PAIRING_CODE_TTL_SECONDS = 600
+_PAIRING_CODE_MAX_ATTEMPTS = 10
+_active_pairing_code: dict | None = None
+
+
+def _current_pairing_code() -> dict | None:
+    global _active_pairing_code
+    if _active_pairing_code is None:
+        return None
+    if time.time() - _active_pairing_code["created_at"] > _PAIRING_CODE_TTL_SECONDS:
+        _active_pairing_code = None
+        return None
+    return _active_pairing_code
+
+
+def _is_trusted_control_client(client_host: str | None, config: dict) -> bool:
+    if client_host in _LOCAL_HOSTS:
+        return True
+    if not client_host:
+        return False
+    try:
+        client_ip = ipaddress.ip_address(client_host)
+    except ValueError:
+        return False
+    for entry in config.get("trusted_control_devices", []):
+        try:
+            network = ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            continue
+        if client_ip in network:
+            return True
+    return False
+
+
+def _is_public_pairing_call(method: str, path: str) -> bool:
+    """The only calls an untrusted device is allowed to make on its own
+    behalf: say "someone's here" (no code involved) and submit a code to
+    try to become trusted."""
+    if method != "POST":
+        return False
+    return path in ("/api/pairing-redeem", "/api/pairing-code/announce")
+
+
+class LocalOnlyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path in _LAN_ALLOWED_EXACT or path.startswith(_LAN_ALLOWED_PREFIXES):
+            return await call_next(request)
+        if _is_public_pairing_call(request.method, path):
+            return await call_next(request)
+        client_host = request.client.host if request.client else None
+        if not _is_trusted_control_client(client_host, state["config"]):
+            if request.method == "GET" and path == "/":
+                # A human just typed/clicked their way to the control panel
+                # from an unrecognized device -- send them to the pairing
+                # page instead of a bare "Forbidden".
+                return RedirectResponse("/request-access")
+            return PlainTextResponse(
+                "Forbidden: this device isn't trusted to control AT LiveCaption yet. "
+                "Go to / on this device to request access.",
+                status_code=403,
+            )
+        return await call_next(request)
+
+
 app = FastAPI(title="AT LiveCaption")
+app.add_middleware(LocalOnlyMiddleware)
 hub = ConnectionHub()
 
 state: dict = {"config": load_config(), "engine": None, "model_state": "not_loaded"}
@@ -101,8 +206,16 @@ async def startup() -> None:
                 _broadcast_engine_status(ready=False, engine_state="model_error")
                 return
 
+        hotwords.build_hotwords_file(
+            config.get("vocabulary", []), str(model_dir / "tokens.txt"), str(HOTWORDS_PATH)
+        )
         try:
-            engine.load_model(str(model_dir))
+            engine.load_model(
+                str(model_dir),
+                hotwords_file=str(HOTWORDS_PATH),
+                hotwords_score=config.get("hotwords_score", 2.5),
+                use_gpu=config.get("gpu_acceleration", False),
+            )
         except Exception as exc:
             state["model_state"] = f"error: {exc}"
             _broadcast_engine_status(ready=False, engine_state="model_error")
@@ -140,6 +253,11 @@ async def audience_page():
 @app.get("/overlay")
 async def overlay_page():
     return FileResponse(STATIC_DIR / "overlay.html")
+
+
+@app.get("/request-access")
+async def request_access_page():
+    return FileResponse(STATIC_DIR / "request_access.html")
 
 
 @app.get("/about")
@@ -246,6 +364,164 @@ async def api_set_dsp(payload: dict):
     return JSONResponse({"ok": True, **settings})
 
 
+@app.post("/api/check-updates")
+async def api_check_updates():
+    result = await asyncio.get_event_loop().run_in_executor(None, update_check.check_for_updates)
+    return JSONResponse(result)
+
+
+@app.get("/api/vocabulary")
+async def api_get_vocabulary():
+    config = state["config"]
+    return JSONResponse({"phrases": config.get("vocabulary", []), "hotwords_score": config.get("hotwords_score", 2.5)})
+
+
+@app.post("/api/vocabulary")
+async def api_set_vocabulary(payload: dict):
+    config = state["config"]
+    phrases = [str(p).strip() for p in payload.get("phrases", []) if str(p).strip()]
+    score = float(payload.get("hotwords_score", config.get("hotwords_score", 2.5)))
+    config["vocabulary"] = phrases
+    config["hotwords_score"] = score
+    save_config(config)
+
+    model_dir = Path(config["model_dir"])
+
+    def _rebuild_and_reload() -> list[str]:
+        skipped = hotwords.build_hotwords_file(phrases, str(model_dir / "tokens.txt"), str(HOTWORDS_PATH))
+        engine: CaptionEngine = state["engine"]
+        if state["model_state"] == "ready":
+            # Hotwords only take effect on a freshly built recognizer, so
+            # reload it in place -- load_model() restarts the audio stream
+            # on the same device afterward if one was already running.
+            # use_gpu carried over from config, not left to its False
+            # default, so saving vocabulary doesn't silently turn GPU back off.
+            engine.load_model(
+                str(model_dir), hotwords_file=str(HOTWORDS_PATH), hotwords_score=score,
+                use_gpu=config.get("gpu_acceleration", False),
+            )
+        return skipped
+
+    skipped = await asyncio.get_event_loop().run_in_executor(None, _rebuild_and_reload)
+    return JSONResponse({"ok": True, "phrases": phrases, "hotwords_score": score, "skipped": skipped})
+
+
+@app.get("/api/gpu")
+async def api_get_gpu():
+    engine: CaptionEngine = state["engine"]
+    stats = await asyncio.get_event_loop().run_in_executor(None, resources.get_resource_stats)
+    return JSONResponse({
+        "enabled": state["config"].get("gpu_acceleration", False),
+        "active": engine.gpu_active if engine else False,
+        "build_supports_gpu": gpu_provider_available(),
+        "detected_gpu_name": stats.get("gpu_name"),
+    })
+
+
+@app.post("/api/gpu")
+async def api_set_gpu(payload: dict):
+    enabled = bool(payload.get("enabled"))
+    config = state["config"]
+    config["gpu_acceleration"] = enabled
+    save_config(config)
+
+    model_dir = Path(config["model_dir"])
+    engine: CaptionEngine = state["engine"]
+
+    def _reload():
+        if state["model_state"] == "ready":
+            engine.load_model(
+                str(model_dir), hotwords_file=str(HOTWORDS_PATH),
+                hotwords_score=config.get("hotwords_score", 2.5), use_gpu=enabled,
+            )
+
+    await asyncio.get_event_loop().run_in_executor(None, _reload)
+    return JSONResponse({"ok": True, "enabled": enabled, "active": engine.gpu_active})
+
+
+# ---- device pairing (see LocalOnlyMiddleware above) ------------------------
+@app.post("/api/pairing-code")
+async def api_generate_pairing_code():
+    global _active_pairing_code
+    code = f"{secrets.randbelow(10000):04d}"
+    _active_pairing_code = {"code": code, "created_at": time.time(), "attempts": 0}
+    return JSONResponse({"code": code, "expires_in": _PAIRING_CODE_TTL_SECONDS})
+
+
+@app.get("/api/pairing-code")
+async def api_get_pairing_code():
+    active = _current_pairing_code()
+    if not active:
+        return JSONResponse({"active": False})
+    remaining = _PAIRING_CODE_TTL_SECONDS - (time.time() - active["created_at"])
+    return JSONResponse({"active": True, "code": active["code"], "expires_in": round(remaining)})
+
+
+@app.post("/api/pairing-code/disable")
+async def api_disable_pairing_code():
+    global _active_pairing_code
+    _active_pairing_code = None
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/pairing-code/announce")
+async def api_announce_pairing_request(request: Request):
+    """Called by an untrusted device's /request-access page on load -- makes
+    sure a code exists (generating one if nothing is active yet) and pings
+    the control panel so a code shows up there without the admin having to
+    have already clicked Generate Code themselves."""
+    global _active_pairing_code
+    if _current_pairing_code() is None:
+        _active_pairing_code = {"code": f"{secrets.randbelow(10000):04d}", "created_at": time.time(), "attempts": 0}
+    ip = request.client.host if request.client else "unknown"
+    await hub.broadcast({"type": "pairing_requested", "ip": ip})
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/pairing-redeem")
+async def api_pairing_redeem(request: Request, payload: dict):
+    active = _current_pairing_code()
+    if not active:
+        return JSONResponse({"error": "No pairing code is active right now."}, status_code=400)
+    submitted = str(payload.get("code", "")).strip()
+    if submitted != active["code"]:
+        active["attempts"] += 1
+        if active["attempts"] >= _PAIRING_CODE_MAX_ATTEMPTS:
+            global _active_pairing_code
+            _active_pairing_code = None
+        return JSONResponse({"error": "That code is incorrect."}, status_code=400)
+
+    ip = request.client.host if request.client else None
+    if not ip:
+        return JSONResponse({"error": "Couldn't determine your device's address."}, status_code=400)
+    config = state["config"]
+    if ip not in config["trusted_control_devices"]:
+        config["trusted_control_devices"].append(ip)
+        save_config(config)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/network-info")
+async def api_network_info():
+    return JSONResponse({"addresses": network_info.list_lan_addresses(), "port": get_port()})
+
+
+@app.get("/api/trusted-devices")
+async def api_get_trusted_devices():
+    return JSONResponse({"devices": state["config"].get("trusted_control_devices", [])})
+
+
+@app.post("/api/trusted-devices/remove")
+async def api_remove_trusted_device(payload: dict):
+    config = state["config"]
+    entry = payload.get("device")
+    devices = config.get("trusted_control_devices", [])
+    if entry in devices:
+        devices.remove(entry)
+        save_config(config)
+    return JSONResponse({"ok": True, "devices": devices})
+
+
 @app.post("/api/test-caption")
 async def api_test_caption():
     await hub.broadcast(
@@ -279,18 +555,156 @@ async def api_set_theme(payload: dict):
 
 @app.get("/api/transcript")
 async def api_get_transcript():
-    return JSONResponse({"enabled": state["config"]["save_transcript"]})
-
-
-@app.post("/api/transcript")
-async def api_set_transcript(payload: dict):
-    enabled = bool(payload.get("enabled"))
-    config = state["config"]
-    config["save_transcript"] = enabled
-    save_config(config)
     writer: TranscriptWriter = state["transcript_writer"]
-    writer.set_enabled(enabled)
-    return JSONResponse({"ok": True, "enabled": enabled})
+    return JSONResponse({"enabled": writer.enabled, "current_file": writer.current_filename})
+
+
+@app.post("/api/transcript/start")
+async def api_start_transcript():
+    writer: TranscriptWriter = state["transcript_writer"]
+    path = writer.start_new()
+    config = state["config"]
+    config["save_transcript"] = True
+    save_config(config)
+    return JSONResponse({"ok": True, "filename": path.name})
+
+
+@app.post("/api/transcript/stop")
+async def api_stop_transcript():
+    writer: TranscriptWriter = state["transcript_writer"]
+    writer.stop()
+    config = state["config"]
+    config["save_transcript"] = False
+    save_config(config)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/transcripts")
+async def api_list_transcripts():
+    transcript_dir = Path(state["config"]["transcript_dir"])
+    if not transcript_dir.is_dir():
+        return JSONResponse([])
+    files = []
+    for path in transcript_dir.rglob("*.txt"):
+        rel = path.relative_to(transcript_dir)
+        parts = rel.parts
+        if len(parts) > 2:
+            continue  # ignore anything nested deeper than group/file -- never created by this app
+        stat = path.stat()
+        files.append({
+            "relpath": str(rel).replace("\\", "/"),
+            "filename": parts[-1],
+            "group": parts[0] if len(parts) == 2 else None,
+            "size_bytes": stat.st_size,
+            "modified": stat.st_mtime,
+        })
+    files.sort(key=lambda f: f["modified"], reverse=True)
+    return JSONResponse(files)
+
+
+# Windows-invalid filename characters, plus the path separators themselves
+# so a "rename" or "group" value can never be used to climb out of
+# transcript_dir the way the old exact-filename check used to guard against.
+_SAFE_TRANSCRIPT_NAME_RE = re.compile(r'^[^\\/:*?"<>|]+$')
+
+
+def _resolve_transcript_path(relpath: str) -> Path | None:
+    transcript_dir = Path(state["config"]["transcript_dir"]).resolve()
+    parts = relpath.replace("\\", "/").split("/")
+    if len(parts) not in (1, 2) or any(p in ("", ".", "..") for p in parts):
+        return None
+    target = (transcript_dir / Path(*parts)).resolve()
+    try:
+        target.relative_to(transcript_dir)
+    except ValueError:
+        return None
+    if not target.is_file():
+        return None
+    return target
+
+
+@app.get("/api/transcripts/{relpath:path}/export.srt")
+async def api_export_transcript_srt(relpath: str):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return PlainTextResponse(to_srt(target.read_text(encoding="utf-8")), media_type="application/x-subrip")
+
+
+@app.get("/api/transcripts/{relpath:path}/export.vtt")
+async def api_export_transcript_vtt(relpath: str):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return PlainTextResponse(to_vtt(target.read_text(encoding="utf-8")), media_type="text/vtt")
+
+
+# Registered after the two /export.* routes above: FastAPI/Starlette tries
+# routes in registration order, and this one's {relpath:path} greedily
+# matches ANY continuation (slashes included) -- if it came first, a request
+# for ".../export.srt" would match here instead, with "export.srt" folded
+# into relpath, and 404 since no file is literally named that.
+@app.get("/api/transcripts/{relpath:path}")
+async def api_get_transcript_file(relpath: str):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return PlainTextResponse(target.read_text(encoding="utf-8"))
+
+
+@app.post("/api/transcripts/{relpath:path}/rename")
+async def api_rename_transcript(relpath: str, payload: dict):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    new_name = str(payload.get("name", "")).strip()
+    if not new_name or not _SAFE_TRANSCRIPT_NAME_RE.match(new_name):
+        return JSONResponse({"error": "Invalid name."}, status_code=400)
+    if not new_name.lower().endswith(".txt"):
+        new_name += ".txt"
+    new_path = target.parent / new_name
+    if new_path.exists():
+        return JSONResponse({"error": "A transcript with that name already exists."}, status_code=400)
+    try:
+        target.rename(new_path)
+    except OSError as exc:
+        return JSONResponse({"error": f"Couldn't rename: {exc}"}, status_code=400)
+    return JSONResponse({"ok": True, "filename": new_name})
+
+
+@app.post("/api/transcripts/{relpath:path}/group")
+async def api_set_transcript_group(relpath: str, payload: dict):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    group = str(payload.get("group", "")).strip()
+    if group and not _SAFE_TRANSCRIPT_NAME_RE.match(group):
+        return JSONResponse({"error": "Invalid group name."}, status_code=400)
+    transcript_dir = Path(state["config"]["transcript_dir"]).resolve()
+    dest_dir = (transcript_dir / group) if group else transcript_dir
+    dest_path = dest_dir / target.name
+    if dest_path == target:
+        return JSONResponse({"ok": True})
+    if dest_path.exists():
+        return JSONResponse({"error": "A transcript with that name already exists in that group."}, status_code=400)
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        target.rename(dest_path)
+    except OSError as exc:
+        return JSONResponse({"error": f"Couldn't move: {exc}"}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/transcripts/{relpath:path}/delete")
+async def api_delete_transcript(relpath: str):
+    target = _resolve_transcript_path(relpath)
+    if target is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        target.unlink()
+    except OSError as exc:
+        return JSONResponse({"error": f"Couldn't delete: {exc}"}, status_code=400)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/settings")

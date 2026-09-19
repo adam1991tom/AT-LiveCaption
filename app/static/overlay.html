@@ -15,9 +15,13 @@
   #wrap[data-position="top"] { justify-content: flex-start; }
   #wrap[data-position="center"] { justify-content: center; }
   #wrap[data-position="bottom"] { justify-content: flex-end; }
+  /* block, not inline-block: a shrink-to-fit box visibly wobbles side to
+     side as the live partial line grows/shrinks word by word, especially
+     with centered text (both edges move). A full-width bar keeps the
+     line's position fixed and only the text inside it changes. */
   #box .line {
     background-color: color-mix(in srgb, var(--bg-color) calc(var(--bg-opacity) * 100%), transparent);
-    display: inline-block;
+    display: block;
     padding: 0.15em 0.4em;
     margin: 0.15em 0;
     border-radius: 4px;

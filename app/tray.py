@@ -12,7 +12,8 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-from app.core.procutil import CREATIONFLAGS, get_base_url
+from app.core import autostart
+from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock, get_base_url
 
 BASE_URL = get_base_url()
 POLL_SECONDS = 2.0
@@ -92,12 +93,20 @@ class ServerSupervisor:
             on_change()
 
 
+def open_control(icon=None, item=None):
+    open_window("control")
+
+
 def main() -> None:
+    if not acquire_tray_instance_lock():
+        # Already running somewhere -- just give the operator a window onto
+        # it instead of starting a second tray+server that would only fight
+        # the first one over the port.
+        open_control()
+        return
+
     supervisor = ServerSupervisor()
     supervisor.start()
-
-    def open_control(icon=None, item=None):
-        open_window("control")
 
     def open_audience(icon=None, item=None):
         open_window("audience")
@@ -107,6 +116,12 @@ def main() -> None:
 
     def restart_server(icon=None, item=None):
         supervisor.restart()
+
+    def toggle_startup(icon=None, item=None):
+        try:
+            autostart.set_enabled(not autostart.is_enabled())
+        except RuntimeError:
+            pass  # dev run, not the installed exe -- silently a no-op
 
     def exit_app(icon=None, item=None):
         supervisor.stop()
@@ -120,6 +135,7 @@ def main() -> None:
         pystray.MenuItem("Open Camera Overlay", open_overlay),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Restart Caption Server", restart_server),
+        pystray.MenuItem("Start with Windows", toggle_startup, checked=lambda item: autostart.is_enabled()),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Exit AT LiveCaption", exit_app),
     )
