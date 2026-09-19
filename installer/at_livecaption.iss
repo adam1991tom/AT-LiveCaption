@@ -1,5 +1,5 @@
 #define MyAppName "AT LiveCaption"
-#define MyAppVersion "0.5.1"
+#define MyAppVersion "2.0.1"
 #define MyAppPublisher "AT LiveCaption"
 #define MyAppExeName "ATLiveCaption.exe"
 #define MyAppPort "8765"
@@ -18,6 +18,17 @@ Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+; Deployment tools (Action1, Intune, etc.) normally push this already
+; elevated as SYSTEM, so this never actually prompts for UAC consent in
+; that context -- SYSTEM's token isn't subject to UAC filtering. Left as
+; "commandline dialog" (the default) rather than restricted, purely so a
+; fleet admin retains the option of an /ALLUSERS or /CURRENTUSER override
+; if their specific deployment context ever needs it.
+PrivilegesRequiredOverridesAllowed=commandline dialog
+; Always writes a diagnostic log to %TEMP%\Setup Log <app> <date>.txt, silent
+; or not -- with no interactive session to watch (a fleet deployment tool),
+; this is the only way to see what actually happened on a given machine.
+SetupLogging=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 WizardStyle=modern
 ; Installer/uninstaller chrome is baked in at compile time, unlike the app's
