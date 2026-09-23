@@ -3,10 +3,15 @@
 // browser refresh or a brief network drop recovers on its own.
 (function () {
   function connect(surface, els) {
-    const finals = []; // {text, ts}
+    let nextId = 0;
+    const finals = []; // {id, text, ts}
     let partial = "";
     let holdMs = 8000;
     let fadeMs = 1500;
+
+    function pushFinal(text, ts) {
+      finals.push({ id: nextId++, text, ts });
+    }
 
     function applyAppearance(appearance) {
       const cfg = appearance[surface];
@@ -105,19 +110,23 @@
     }
 
     // Overlay sits over live video, so it never gets the audience screen's
-    // luxury of holding 3 lines -- it's a scrolling ticker capped at 2, and
-    // unlike the audience screen, the older of those 2 lines starts fading
-    // the moment a 2nd line lands, not only once a 3rd is already queued
-    // behind it. Otherwise a line can sit at full opacity for its whole
-    // hold_seconds while the next one is already spoken, which is what reads
-    // as captions "piling up into a paragraph."
+    // luxury of holding 3 lines -- it's a compact ticker capped at 2, and
+    // the older of those 2 lines starts fading the moment a 2nd line lands,
+    // not only once a 3rd is already queued behind it. The audience screen
+    // is treated completely separately (see renderScroll below): a real
+    // scroll-up-and-fade motion, not an in-place opacity swap.
     const surfaceCap = surface === "overlay" ? 2 : 3;
-    const scrollMode = surface === "overlay";
+    const isOverlay = surface === "overlay";
 
-    function render() {
+    function escapeHtml(text) {
+      const d = document.createElement("div");
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    // ---- overlay: compact ticker, rebuilt from scratch every tick --------
+    function renderTicker() {
       pruneExpired();
-      // Hard ceiling regardless of configured appearance settings -- keeps
-      // captions from ever stacking past a readable amount on screen.
       const maxLines = Math.min(surfaceCap, parseInt(els.box.dataset.maxLines || String(surfaceCap), 10));
       const keep = Math.max(0, maxLines - (partial ? 1 : 0));
       // finals.slice(-0) is slice(0) in JS (whole array) -- guard the zero case explicitly.
@@ -126,12 +135,9 @@
       let html = shown
         .map((f, i) => {
           const isNewest = i === shown.length - 1;
-          // Ticker mode: any line that isn't the newest already has
-          // something newer showing above/after it, so it's on its way out
-          // regardless of its own age. Non-ticker (audience): only the
-          // oldest visible line fast-fades, and only once a newer final is
-          // already queued beyond what's shown.
-          const displaced = scrollMode ? !isNewest : (i === 0 && queuedBeyond);
+          // Any line that isn't the newest already has something newer
+          // showing after it, so it's on its way out regardless of its own age.
+          const displaced = !isNewest;
           const hold = displaced ? 0 : holdMs;
           const fade = displaced ? FAST_FADE_MS : fadeMs;
           return "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts, hold, fade) + "\">" + escapeHtml(f.text) + "</div>";
@@ -141,11 +147,98 @@
       els.box.innerHTML = html;
     }
 
-    function escapeHtml(text) {
-      const d = document.createElement("div");
-      d.textContent = text;
-      return d.innerHTML;
+    // ---- audience: genuine scroll-up-and-fade -----------------------------
+    // Unlike the overlay ticker, this keeps one persistent DOM element per
+    // caption (keyed by id) instead of rebuilding the box from scratch every
+    // tick -- rebuilding from scratch gives the browser nothing to animate
+    // between, which is why captions read as "stuck" rather than advancing.
+    // When a line is bumped out of the visible window by a newer one, it's
+    // switched to position:absolute at its current on-screen spot (so
+    // removing it from the flow doesn't disturb the lines still showing,
+    // which -- anchored to the bottom by default -- naturally don't need to
+    // move at all) and animated floating up by its own height while fading,
+    // like it's scrolling off the top of the screen.
+    const EXIT_MS = 700;
+    const lineEls = new Map(); // id -> element
+    let partialEl = null;
+
+    function exitLine(id, el) {
+      lineEls.delete(id);
+      const top = el.offsetTop, left = el.offsetLeft, width = el.offsetWidth, height = el.offsetHeight;
+      el.style.transition = "none";
+      el.style.position = "absolute";
+      el.style.top = top + "px";
+      el.style.left = left + "px";
+      el.style.width = width + "px";
+      el.style.margin = "0";
+      // Force the browser to commit the position:absolute placement above
+      // before changing opacity/transform below, or it can coalesce both
+      // into one paint and skip the animation entirely. requestAnimationFrame
+      // would normally do this, but it's throttled/skipped for a tab that
+      // isn't focused or visible (background window, some capture setups) --
+      // reading a layout property forces a synchronous flush that works
+      // regardless of tab visibility.
+      void el.offsetHeight;
+      el.style.transition = "opacity " + EXIT_MS + "ms ease, transform " + EXIT_MS + "ms ease";
+      el.style.opacity = "0";
+      el.style.transform = "translateY(-" + height + "px)";
+      setTimeout(() => el.remove(), EXIT_MS + 150);
     }
+
+    function renderScroll() {
+      pruneExpired();
+      const maxLines = Math.min(surfaceCap, parseInt(els.box.dataset.maxLines || String(surfaceCap), 10));
+      const keep = Math.max(0, maxLines - (partial ? 1 : 0));
+      const shown = keep > 0 ? finals.slice(-keep) : [];
+      const shownIds = new Set(shown.map((f) => f.id));
+
+      for (const [id, el] of Array.from(lineEls.entries())) {
+        if (!shownIds.has(id)) exitLine(id, el);
+      }
+
+      shown.forEach((f) => {
+        let el = lineEls.get(f.id);
+        if (!el) {
+          el = document.createElement("div");
+          el.className = "line";
+          el.textContent = f.text;
+          el.style.transition = "none";
+          el.style.opacity = "0";
+          els.box.appendChild(el);
+          lineEls.set(f.id, el);
+          void el.offsetHeight; // see exitLine -- same forced-flush reasoning, same rAF-throttling risk
+          el.style.transition = "opacity 0.4s ease";
+          el.style.opacity = String(opacityFor(f.ts, holdMs, fadeMs));
+          return;
+        }
+        el.textContent = f.text;
+        el.style.opacity = String(opacityFor(f.ts, holdMs, fadeMs));
+      });
+
+      if (partial) {
+        if (!partialEl) {
+          partialEl = document.createElement("div");
+          partialEl.className = "line";
+          els.box.appendChild(partialEl);
+        }
+        partialEl.textContent = partial;
+        partialEl.style.opacity = "1";
+      } else if (partialEl) {
+        partialEl.remove();
+        partialEl = null;
+      }
+    }
+
+    function resetScrollDom() {
+      for (const el of lineEls.values()) el.remove();
+      lineEls.clear();
+      if (partialEl) {
+        partialEl.remove();
+        partialEl = null;
+      }
+    }
+
+    const render = isOverlay ? renderTicker : renderScroll;
 
     setInterval(render, 200);
 
@@ -184,7 +277,7 @@
     // sit showing one ever-growing partial line, never advancing to a 2nd
     // line, however fast someone talks. Promoting each row the instant it's
     // full (independent of when the recognizer decides the sentence ended)
-    // makes the ticker advance on screen width alone, same as a real
+    // makes the display advance on screen width alone, same as a real
     // scrolling subtitle.
     let committedPartialRows = 0;
 
@@ -192,7 +285,8 @@
       const lines = wrapToLines(text);
       const upTo = keepLastAsPartial ? Math.max(committedPartialRows, lines.length - 1) : lines.length;
       const newlyCompleted = lines.slice(committedPartialRows, upTo);
-      newlyCompleted.forEach((line) => finals.push({ text: line, ts: Date.now() }));
+      const now = Date.now();
+      newlyCompleted.forEach((line) => pushFinal(line, now));
       committedPartialRows += newlyCompleted.length;
       return keepLastAsPartial ? lines[lines.length - 1] || "" : "";
     }
@@ -210,9 +304,10 @@
           case "sync":
             finals.length = 0;
             committedPartialRows = 0;
+            if (!isOverlay) resetScrollDom();
             const now = Date.now();
             msg.recent_finals.forEach((text) => {
-              wrapToLines(text).forEach((line) => finals.push({ text: line, ts: now }));
+              wrapToLines(text).forEach((line) => pushFinal(line, now));
             });
             partial = tailLine(msg.partial || "");
             render();
@@ -230,6 +325,7 @@
           case "clear":
             finals.length = 0;
             committedPartialRows = 0;
+            if (!isOverlay) resetScrollDom();
             partial = "";
             render();
             break;

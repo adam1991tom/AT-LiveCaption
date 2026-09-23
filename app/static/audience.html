@@ -17,6 +17,10 @@
   #wrap[data-position="bottom"] { justify-content: flex-end; }
   #box {
     background-color: rgba(0,0,0,0);
+    /* Positioned so an outgoing line can switch to position:absolute (see
+       caption-client.js) and animate away without disturbing the normal
+       flow of the lines still on screen. */
+    position: relative;
   }
   /* block, not inline-block: a shrink-to-fit box visibly wobbles side to
      side as the live partial line grows/shrinks word by word, especially
@@ -28,7 +32,6 @@
     padding: 0.15em 0.4em;
     margin: 0.15em 0;
     border-radius: 4px;
-    transition: opacity 0.2s linear;
   }
 </style>
 </head>
