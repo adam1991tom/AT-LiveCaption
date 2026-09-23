@@ -5,6 +5,7 @@ models/
 models_test/
 config.json
 hotwords.txt
+corrections.json
 transcripts/
 *.tar.bz2
 build/

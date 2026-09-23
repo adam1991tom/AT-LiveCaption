@@ -3,10 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import deque
 from typing import Any
 
 from fastapi import WebSocket
+
+# Separate from recent_finals (which is only a handful, for reconnect sync) --
+# this is a much longer browsable buffer with each final's word/confidence
+# breakdown, for the Corrections tab to review after the fact, not just live.
+CAPTION_HISTORY_SIZE = 200
 
 
 class ConnectionHub:
@@ -14,6 +20,7 @@ class ConnectionHub:
         self._clients: set[WebSocket] = set()
         self._lock = asyncio.Lock()
         self.recent_finals: deque[str] = deque(maxlen=history_size)
+        self.caption_history: deque[dict[str, Any]] = deque(maxlen=CAPTION_HISTORY_SIZE)
         self.current_partial: str = ""
         self.appearance: dict[str, Any] = {}
         self.status: dict[str, Any] = {
@@ -51,6 +58,9 @@ class ConnectionHub:
     async def broadcast(self, message: dict[str, Any]) -> None:
         if message.get("type") == "final":
             self.recent_finals.append(message["text"])
+            self.caption_history.append(
+                {"text": message["text"], "words": message.get("words", []), "ts": time.time()}
+            )
             self.current_partial = ""
         elif message.get("type") == "partial":
             self.current_partial = message["text"]
@@ -69,3 +79,7 @@ class ConnectionHub:
 
     def client_count(self) -> int:
         return len(self._clients)
+
+    def get_caption_history(self) -> list[dict[str, Any]]:
+        # Newest first -- that's how the Corrections tab wants to show it.
+        return list(reversed(self.caption_history))

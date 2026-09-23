@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.core import audio_devices, hotwords, model_download, network_info, resources, update_check
+from app.core import audio_devices, corrections, hotwords, model_download, network_info, resources, update_check
 from app.core.asr_engine import CaptionEngine, gpu_provider_available
 from app.core.config import DATA_DIR, THEMES, load_config, save_config
 from app.core.hub import ConnectionHub
@@ -29,6 +29,7 @@ from app.core.transcript import TranscriptWriter, to_srt, to_vtt
 from app import version
 
 HOTWORDS_PATH = DATA_DIR / "hotwords.txt"
+CORRECTIONS_PATH = DATA_DIR / "corrections.json"
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -406,6 +407,54 @@ async def api_set_vocabulary(payload: dict):
     return JSONResponse({"ok": True, "phrases": phrases, "hotwords_score": score, "skipped": skipped})
 
 
+@app.get("/api/caption-history")
+async def api_get_caption_history():
+    return JSONResponse(hub.get_caption_history())
+
+
+@app.get("/api/corrections")
+async def api_get_corrections():
+    return JSONResponse(list(reversed(corrections.load_corrections(CORRECTIONS_PATH))))
+
+
+@app.post("/api/corrections")
+async def api_add_correction(payload: dict):
+    original = str(payload.get("original", "")).strip()
+    corrected = str(payload.get("corrected", "")).strip()
+    if not original or not corrected:
+        return JSONResponse({"error": "Both the original and corrected word are required."}, status_code=400)
+
+    corrections.add_correction(CORRECTIONS_PATH, original, corrected)
+
+    # The actual "learning" this app can do: boost the corrected word in the
+    # custom vocabulary so the engine is more likely to get it right next
+    # time -- not retraining the model itself, which isn't something a
+    # local desktop app can do.
+    config = state["config"]
+    vocabulary = config.get("vocabulary", [])
+    added_to_vocabulary = False
+    if corrected.lower() not in [v.lower() for v in vocabulary]:
+        vocabulary.append(corrected)
+        config["vocabulary"] = vocabulary
+        save_config(config)
+        added_to_vocabulary = True
+
+    model_dir = Path(config["model_dir"])
+
+    def _rebuild_and_reload() -> list[str]:
+        skipped = hotwords.build_hotwords_file(vocabulary, str(model_dir / "tokens.txt"), str(HOTWORDS_PATH))
+        engine: CaptionEngine = state["engine"]
+        if state["model_state"] == "ready":
+            engine.load_model(
+                str(model_dir), hotwords_file=str(HOTWORDS_PATH),
+                hotwords_score=config.get("hotwords_score", 2.5), use_gpu=config.get("gpu_acceleration", False),
+            )
+        return skipped
+
+    skipped = await asyncio.get_event_loop().run_in_executor(None, _rebuild_and_reload) if added_to_vocabulary else []
+    return JSONResponse({"ok": True, "added_to_vocabulary": added_to_vocabulary, "skipped": skipped})
+
+
 @app.get("/api/gpu")
 async def api_get_gpu():
     engine: CaptionEngine = state["engine"]
@@ -718,6 +767,12 @@ async def api_set_settings(payload: dict):
     for surface in ("audience", "overlay"):
         if surface in payload:
             config["appearance"][surface].update(payload[surface])
+            # Hard ceiling: past ~3 lines, captions stack up faster than
+            # anyone can read them and start to feel like they're taking
+            # over the screen -- caption-client.js enforces the same cap
+            # independently, this just keeps the setting itself honest.
+            if "max_lines" in config["appearance"][surface]:
+                config["appearance"][surface]["max_lines"] = min(3, int(config["appearance"][surface]["max_lines"]))
     save_config(config)
     await hub.broadcast(_appearance_message())
     return JSONResponse({"ok": True, "appearance": config["appearance"]})

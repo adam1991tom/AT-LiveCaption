@@ -35,20 +35,38 @@
       }
     }
 
-    function opacityFor(ts) {
+    // During continuous speech, new finals arrive faster than holdMs apart,
+    // so every visible slot is always occupied by a line younger than
+    // holdMs -- meaning it never actually reaches the fade window, just
+    // sits fully solid the whole time. That reads as captions "taking over
+    // the screen" and never clearing. Fix: once a newer final is already
+    // queued to take a line's slot, that line is on its way out regardless
+    // -- fade it out quickly (no hold, short fade) instead of waiting for
+    // its own full hold timer, which it will likely never reach anyway.
+    const FAST_FADE_MS = 500;
+
+    function opacityFor(ts, hold, fade) {
       const age = Date.now() - ts;
-      if (age <= holdMs) return 1;
-      return Math.max(0, 1 - (age - holdMs) / fadeMs);
+      if (age <= hold) return 1;
+      return Math.max(0, 1 - (age - hold) / fade);
     }
 
     function render() {
       pruneExpired();
-      const maxLines = parseInt(els.box.dataset.maxLines || "3", 10);
+      // Hard ceiling regardless of configured appearance settings -- keeps
+      // captions from ever stacking past a readable amount on screen.
+      const maxLines = Math.min(3, parseInt(els.box.dataset.maxLines || "3", 10));
       const keep = Math.max(0, maxLines - (partial ? 1 : 0));
       // finals.slice(-0) is slice(0) in JS (whole array) -- guard the zero case explicitly.
       const shown = keep > 0 ? finals.slice(-keep) : [];
+      const beingDisplaced = finals.length > shown.length;
       let html = shown
-        .map((f) => "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts) + "\">" + escapeHtml(f.text) + "</div>")
+        .map((f, i) => {
+          const isOldestShown = i === 0;
+          const hold = (isOldestShown && beingDisplaced) ? 0 : holdMs;
+          const fade = (isOldestShown && beingDisplaced) ? FAST_FADE_MS : fadeMs;
+          return "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts, hold, fade) + "\">" + escapeHtml(f.text) + "</div>";
+        })
         .join("");
       if (partial) html += "<div class=\"line\">" + escapeHtml(partial) + "</div>";
       els.box.innerHTML = html;

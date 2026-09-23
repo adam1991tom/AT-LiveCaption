@@ -46,8 +46,13 @@
   #eq-canvas-wrap { width: 100%; height: 260px; }
   #eq-canvas { width: 100%; height: 100%; display: block; cursor: crosshair; border-radius: 6px; }
   .eq-hint { font-size: 11px; color: #777; margin-top: 8px; }
-  #preview .conf-mid { color: #f5a623; }
-  #preview .conf-low { color: #ff6b6b; text-decoration: underline wavy #ff6b6b; text-decoration-thickness: 1px; }
+  #preview .conf-mid, .conf-mid { color: #f5a623; }
+  #preview .conf-low, .conf-low { color: #ff6b6b; text-decoration: underline wavy #ff6b6b; text-decoration-thickness: 1px; }
+  .caption-history-row { padding: 8px 0; border-bottom: 1px solid #2a2e38; font-size: 14px; line-height: 1.6; }
+  .caption-history-row:last-child { border-bottom: none; }
+  .chr-word { cursor: pointer; border-radius: 3px; padding: 1px 2px; }
+  .chr-word:hover { background: #2a2e38; }
+  .chr-word-active { background: var(--accent); color: #fff !important; text-decoration: none; }
   textarea#vocab-textarea { background: #12141a; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 8px; width: 100%; height: 140px; box-sizing: border-box; font-family: inherit; font-size: 13px; resize: vertical; }
   .hint { font-size: 11px; color: #777; margin-top: 6px; }
   .skipped-note { font-size: 12px; color: #f5a623; margin-top: 8px; }
@@ -157,6 +162,7 @@
     <button class="tab-btn" data-tab="transcript">Transcript</button>
     <button class="tab-btn" data-tab="appearance">Appearance</button>
     <button class="tab-btn" data-tab="access">Access</button>
+    <button class="tab-btn" data-tab="corrections">Corrections</button>
   </div>
 
   <div class="tab-content">
@@ -272,6 +278,20 @@
         <div id="trusted-devices-list" style="font-size:13px;"></div>
       </div>
     </div>
+
+    <div class="tab-pane" id="tab-corrections" hidden>
+      <div class="panel">
+        <div style="font-size:13px; color:#999; margin-bottom:10px;">FIX A MISHEARD WORD</div>
+        <div class="hint">Click any word below to correct it. This doesn't retrain the speech engine itself -- that's not something a desktop app can do locally -- it adds the right word to your Vocabulary list so it's boosted next time. Words shown in <span class="conf-mid">amber</span> or <span class="conf-low">red</span> are ones the engine itself wasn't confident about.</div>
+        <div id="caption-history-list" style="margin-top:12px;"></div>
+        <button class="secondary" id="btn-refresh-history" style="margin-top:10px;">Refresh</button>
+      </div>
+      <div class="panel">
+        <div style="font-size:12px; color:#999; margin-bottom:6px;">CORRECTIONS MADE</div>
+        <div id="corrections-list" style="font-size:13px;"></div>
+        <div id="corrections-empty" class="hint" style="display:none;">No corrections made yet.</div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -297,6 +317,7 @@ function showTab(name) {
   try { localStorage.setItem("at_lc_tab", name); } catch (e) {}
   if (name === "audio") resizeEqCanvas();
   if (name === "access") loadAccessTab();
+  if (name === "corrections") loadCorrectionsTab();
 }
 document.querySelectorAll(".tab-btn").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
 let initialTab = "live";
@@ -540,6 +561,111 @@ function loadAccessTab() {
   loadNetworkAndScreens();
   loadTrustedDevices();
   loadPairingCode();
+}
+
+// ---- Corrections: click a misheard word, give the right one ---------------
+// Not model retraining -- that's not something a desktop app can do
+// locally. This boosts the corrected word in the custom vocabulary (see
+// the Vocabulary tab) so the engine leans toward it next time.
+function escapeHtmlLocal(text) {
+  const d = document.createElement("div");
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function confClassFor(confidence) {
+  if (confidence >= 0.7) return "";
+  if (confidence >= 0.4) return "conf-mid";
+  return "conf-low";
+}
+
+let lastCaptionHistory = [];
+let correctingAt = null; // {hi, wi} while an inline correction form is open for one word
+
+function renderCaptionHistory(history) {
+  lastCaptionHistory = history;
+  const wrap = document.getElementById("caption-history-list");
+  if (!history.length) {
+    wrap.innerHTML = `<div class="hint">No captions yet this session -- start talking, then come back here to review and fix anything that came out wrong.</div>`;
+    return;
+  }
+  wrap.innerHTML = history.map((entry, hi) => {
+    if (!entry.words || !entry.words.length) {
+      return `<div class="caption-history-row">${escapeHtmlLocal(entry.text)}</div>`;
+    }
+    const wordsHtml = entry.words.map((w, wi) => {
+      const cls = confClassFor(w.confidence);
+      const isActive = correctingAt && correctingAt.hi === hi && correctingAt.wi === wi;
+      return `<span class="chr-word ${cls} ${isActive ? "chr-word-active" : ""}" data-hi="${hi}" data-wi="${wi}">${escapeHtmlLocal(w.text)}</span>`;
+    }).join(" ");
+    let formHtml = "";
+    if (correctingAt && correctingAt.hi === hi) {
+      const w = entry.words[correctingAt.wi];
+      formHtml = `<div class="transcript-edit-row" style="margin-top:6px;">` +
+        `<input type="text" class="correction-input" value="${escapeHtmlLocal(w.text)}">` +
+        `<button data-act="save-correction">Save</button>` +
+        `<button class="secondary" data-act="cancel-correction">Cancel</button></div>`;
+    }
+    return `<div class="caption-history-row">${wordsHtml}${formHtml}</div>`;
+  }).join("");
+}
+
+function loadCaptionHistory() {
+  fetch("/api/caption-history").then(r => r.json()).then(renderCaptionHistory);
+}
+
+document.getElementById("caption-history-list").addEventListener("click", (e) => {
+  const word = e.target.closest(".chr-word");
+  if (word) {
+    correctingAt = { hi: Number(word.dataset.hi), wi: Number(word.dataset.wi) };
+    renderCaptionHistory(lastCaptionHistory);
+    return;
+  }
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  if (btn.dataset.act === "cancel-correction") {
+    correctingAt = null;
+    renderCaptionHistory(lastCaptionHistory);
+    return;
+  }
+  if (btn.dataset.act === "save-correction") {
+    const input = btn.closest(".transcript-edit-row").querySelector(".correction-input");
+    const original = lastCaptionHistory[correctingAt.hi].words[correctingAt.wi].text;
+    const corrected = input.value.trim();
+    if (!corrected) return;
+    fetch("/api/corrections", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ original, corrected }),
+    }).then(() => {
+      correctingAt = null;
+      loadCaptionHistory();
+      loadCorrectionsList();
+    });
+  }
+});
+
+document.getElementById("btn-refresh-history").onclick = loadCaptionHistory;
+
+function loadCorrectionsList() {
+  fetch("/api/corrections").then(r => r.json()).then(list => {
+    const wrap = document.getElementById("corrections-list");
+    const empty = document.getElementById("corrections-empty");
+    if (!list.length) {
+      wrap.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    wrap.innerHTML = list.map(c => {
+      const date = new Date(c.ts * 1000).toLocaleString();
+      return `<div class="transcript-row"><span>&ldquo;${escapeHtmlLocal(c.original)}&rdquo; &rarr; &ldquo;${escapeHtmlLocal(c.corrected)}&rdquo;</span><span class="t-meta">${date}</span></div>`;
+    }).join("");
+  });
+}
+
+function loadCorrectionsTab() {
+  loadCaptionHistory();
+  loadCorrectionsList();
 }
 
 document.getElementById("btn-test").onclick = () => fetch("/api/test-caption", { method: "POST" });
