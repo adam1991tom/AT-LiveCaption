@@ -601,6 +601,12 @@ async def api_remove_trusted_device(payload: dict):
     return JSONResponse({"ok": True, "devices": devices})
 
 
+@app.post("/api/test-partial")
+async def api_test_partial(text: str):
+    await hub.broadcast({"type": "partial", "text": text})
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/test-caption")
 async def api_test_caption(text: str = "This is a test caption from AT LiveCaption."):
     words = [{"text": w, "confidence": 0.5} for w in text.split()]

@@ -177,6 +177,26 @@
       }, MIN_PARTIAL_RENDER_MS - elapsed);
     }
 
+    // Rows of the current in-progress utterance already promoted from
+    // `partial` into `finals`. Fast, fluent speech with no pauses may go a
+    // long time between true "final" events (the recognizer only finalizes
+    // on a trailing silence gap) -- without this, the display would just
+    // sit showing one ever-growing partial line, never advancing to a 2nd
+    // line, however fast someone talks. Promoting each row the instant it's
+    // full (independent of when the recognizer decides the sentence ended)
+    // makes the ticker advance on screen width alone, same as a real
+    // scrolling subtitle.
+    let committedPartialRows = 0;
+
+    function promotePartialRows(text, keepLastAsPartial) {
+      const lines = wrapToLines(text);
+      const upTo = keepLastAsPartial ? Math.max(committedPartialRows, lines.length - 1) : lines.length;
+      const newlyCompleted = lines.slice(committedPartialRows, upTo);
+      newlyCompleted.forEach((line) => finals.push({ text: line, ts: Date.now() }));
+      committedPartialRows += newlyCompleted.length;
+      return keepLastAsPartial ? lines[lines.length - 1] || "" : "";
+    }
+
     function open() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(proto + "://" + location.host + "/ws");
@@ -189,6 +209,7 @@
             break;
           case "sync":
             finals.length = 0;
+            committedPartialRows = 0;
             const now = Date.now();
             msg.recent_finals.forEach((text) => {
               wrapToLines(text).forEach((line) => finals.push({ text: line, ts: now }));
@@ -197,16 +218,18 @@
             render();
             break;
           case "partial":
-            partial = tailLine(msg.text);
+            partial = promotePartialRows(msg.text, true);
             scheduleRender();
             break;
           case "final":
-            wrapToLines(msg.text).forEach((line) => finals.push({ text: line, ts: Date.now() }));
+            promotePartialRows(msg.text, false);
+            committedPartialRows = 0;
             partial = "";
             render();
             break;
           case "clear":
             finals.length = 0;
+            committedPartialRows = 0;
             partial = "";
             render();
             break;
