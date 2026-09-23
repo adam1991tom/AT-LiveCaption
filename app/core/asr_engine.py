@@ -28,26 +28,6 @@ CHUNK_SECONDS = 0.06
 SILENCE_FLOOR_DB = -60.0
 
 
-def gpu_provider_available() -> bool:
-    """Whether the installed sherpa-onnx build actually has CUDA support
-    compiled in, checked structurally rather than assumed. The standard
-    PyPI wheel ships a single CPU-only onnxruntime.dll; a GPU-enabled build
-    additionally ships a CUDA execution-provider DLL alongside it. Passing
-    provider="cuda" to a CPU-only build doesn't error -- it just silently
-    falls back to CPU -- so this is the only reliable way to know in
-    advance whether requesting GPU will actually do anything. If a real
-    GPU-enabled build is ever swapped in, this starts returning True with
-    no code changes needed here."""
-    try:
-        from sherpa_onnx._info import libs_dir
-    except ImportError:
-        return False
-    lib_dir = Path(libs_dir)
-    if not lib_dir.is_dir():
-        return False
-    return any(lib_dir.glob("*cuda*")) or any(lib_dir.glob("*provider*"))
-
-
 def _dbfs(samples: np.ndarray) -> float:
     rms = float(np.sqrt(np.mean(np.square(samples)))) if samples.size else 0.0
     if rms <= 1e-8:
@@ -64,6 +44,23 @@ _ACRONYM_RE = re.compile(r"\b([A-Za-z])(?:\s+([A-Za-z]))+\b")
 
 def _join_spelled_acronyms(text: str) -> str:
     return _ACRONYM_RE.sub(lambda m: m.group(0).replace(" ", "").upper(), text)
+
+
+# Background music/noise has no real words for the model to latch onto, so
+# it tends to guess a repeated filler sound instead of staying silent --
+# heard live as caption spam like "um um um". This isn't a real acoustic
+# music detector (that would need a trained classifier and a labelled
+# dataset to tune reliably, which isn't something to guess at) -- it's a
+# narrow, honest fix for that exact symptom: an utterance made up of
+# nothing but filler words, with zero real content, is relabelled rather
+# than shown as noise. A single filler word on its own is left alone --
+# that's just normal hesitant speech.
+_FILLER_WORDS = {"um", "uh", "umm", "uhh", "erm", "hmm", "mm", "mmm", "huh"}
+
+
+def _is_filler_spam(text: str) -> bool:
+    words = re.findall(r"[a-zA-Z']+", text.lower())
+    return len(words) >= 2 and all(w in _FILLER_WORDS for w in words)
 
 
 def _merge_acronym_words(words: list[dict]) -> list[dict]:
@@ -141,12 +138,6 @@ class CaptionEngine:
         self._gain_db = 0.0
         self._band_gains_db = [0.0] * len(dsp.EQ_BANDS_HZ)
 
-        # Whether GPU was actually used for the currently-loaded model --
-        # not the same as whether it was *requested*: gpu_provider_available()
-        # decides that (see load_model()), so this never silently claims
-        # acceleration a CPU-only build can't actually provide.
-        self.gpu_active = False
-
     # ---- live audio processing --------------------------------------------
     def set_gain_db(self, gain_db: float) -> None:
         gain_db = max(-dsp.MAX_GAIN_DB, min(dsp.MAX_GAIN_DB, gain_db))
@@ -177,7 +168,7 @@ class CaptionEngine:
 
     # ---- model -------------------------------------------------------
     def load_model(
-        self, model_dir: str, hotwords_file: str = "", hotwords_score: float = 1.5, use_gpu: bool = False
+        self, model_dir: str, hotwords_file: str = "", hotwords_score: float = 1.5
     ) -> None:
         with self._lifecycle_lock:
             model_path = Path(model_dir)
@@ -185,11 +176,6 @@ class CaptionEngine:
             device_index, device_name = self.device_index, self.device_name
             if was_running:
                 self.stop()
-            # gpu_provider_available() -- not just use_gpu -- decides the
-            # actual provider: requesting "cuda" on a CPU-only build doesn't
-            # error, it silently no-ops to CPU, which would otherwise let
-            # self.gpu_active claim acceleration that never happened.
-            self.gpu_active = use_gpu and gpu_provider_available()
             self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
                 tokens=str(model_path / "tokens.txt"),
                 encoder=str(model_path / "encoder-epoch-99-avg-1.int8.onnx"),
@@ -210,7 +196,7 @@ class CaptionEngine:
                 # sentencepiece model segfaults the native decoder).
                 hotwords_file=hotwords_file,
                 hotwords_score=hotwords_score,
-                provider="cuda" if self.gpu_active else "cpu",
+                provider="cpu",
             )
             self.model_ready = True
             if was_running:
@@ -318,6 +304,8 @@ class CaptionEngine:
 
                         if is_endpoint:
                             if text:
+                                if _is_filler_spam(text):
+                                    text, words = "[MUSIC]", []
                                 self._emit({"type": "final", "text": text, "words": words})
                                 self.transcript_writer.write_final(text)
                             self.recognizer.reset(stream)

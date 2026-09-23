@@ -147,12 +147,6 @@
       <div class="status-item">GPU MEM <span id="txt-gpu-mem">-</span></div>
       <div class="status-item">GPU TEMP <span id="txt-gpu-temp">-</span></div>
     </div>
-    <div class="status-row" style="margin-top:12px; align-items:center;">
-      <label class="status-item" style="cursor:pointer;">
-        <input type="checkbox" id="chk-gpu-accel"> Use NVIDIA GPU for speech recognition (experimental)
-      </label>
-      <span class="status-item" id="gpu-accel-note" style="color:#999;"></span>
-    </div>
   </div>
 
   <div class="tabs">
@@ -1175,36 +1169,6 @@ document.getElementById("btn-refresh-devices").onclick = () => {
     applyDeviceList(devices);
     btn.disabled = false;
   }).catch(() => { btn.disabled = false; });
-};
-
-// ---- GPU acceleration (experimental, NVIDIA-only) --------------------------
-const chkGpuAccel = document.getElementById("chk-gpu-accel");
-const gpuAccelNote = document.getElementById("gpu-accel-note");
-
-function renderGpuStatus(data) {
-  chkGpuAccel.checked = data.enabled;
-  if (!data.enabled) {
-    gpuAccelNote.textContent = "";
-  } else if (data.active) {
-    gpuAccelNote.textContent = "Active" + (data.detected_gpu_name ? " (" + data.detected_gpu_name + ")" : "");
-  } else if (!data.build_supports_gpu) {
-    gpuAccelNote.textContent = "Not active -- this build has no GPU support compiled in, using CPU.";
-  } else {
-    gpuAccelNote.textContent = "Not active -- falling back to CPU.";
-  }
-}
-
-fetch("/api/gpu").then(r => r.json()).then(renderGpuStatus);
-
-chkGpuAccel.onchange = () => {
-  chkGpuAccel.disabled = true;
-  gpuAccelNote.textContent = "Applying...";
-  fetch("/api/gpu", {
-    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ enabled: chkGpuAccel.checked }),
-  }).then(r => r.json()).then((data) => {
-    chkGpuAccel.disabled = false;
-    renderGpuStatus(data);
-  }).catch(() => { chkGpuAccel.disabled = false; });
 };
 
 function setDot(id, state) {

@@ -39,7 +39,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vocabulary": [],
     "hotwords_score": 2.5,
     "trusted_control_devices": [],
-    "gpu_acceleration": False,
     "appearance": {
         "audience": {
             "font_family": "Arial, sans-serif",

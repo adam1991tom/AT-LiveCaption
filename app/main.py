@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core import audio_devices, corrections, hotwords, model_download, network_info, resources, update_check
-from app.core.asr_engine import CaptionEngine, gpu_provider_available
+from app.core.asr_engine import CaptionEngine
 from app.core.config import DATA_DIR, THEMES, load_config, save_config
 from app.core.hub import ConnectionHub
 from app.core.procutil import get_port
@@ -232,7 +232,6 @@ async def startup() -> None:
                 str(model_dir),
                 hotwords_file=str(HOTWORDS_PATH),
                 hotwords_score=config.get("hotwords_score", 2.5),
-                use_gpu=config.get("gpu_acceleration", False),
             )
         except Exception as exc:
             state["model_state"] = f"error: {exc}"
@@ -412,11 +411,8 @@ async def api_set_vocabulary(payload: dict):
             # Hotwords only take effect on a freshly built recognizer, so
             # reload it in place -- load_model() restarts the audio stream
             # on the same device afterward if one was already running.
-            # use_gpu carried over from config, not left to its False
-            # default, so saving vocabulary doesn't silently turn GPU back off.
             engine.load_model(
                 str(model_dir), hotwords_file=str(HOTWORDS_PATH), hotwords_score=score,
-                use_gpu=config.get("gpu_acceleration", False),
             )
         return skipped
 
@@ -477,45 +473,12 @@ async def api_add_correction(payload: dict):
         if state["model_state"] == "ready" and not engine.is_running():
             engine.load_model(
                 str(model_dir), hotwords_file=str(HOTWORDS_PATH),
-                hotwords_score=config.get("hotwords_score", 2.5), use_gpu=config.get("gpu_acceleration", False),
+                hotwords_score=config.get("hotwords_score", 2.5),
             )
         return skipped
 
     skipped = await asyncio.get_event_loop().run_in_executor(None, _rebuild_and_reload) if added_to_vocabulary else []
     return JSONResponse({"ok": True, "added_to_vocabulary": added_to_vocabulary, "skipped": skipped})
-
-
-@app.get("/api/gpu")
-async def api_get_gpu():
-    engine: CaptionEngine = state["engine"]
-    stats = await asyncio.get_event_loop().run_in_executor(None, resources.get_resource_stats)
-    return JSONResponse({
-        "enabled": state["config"].get("gpu_acceleration", False),
-        "active": engine.gpu_active if engine else False,
-        "build_supports_gpu": gpu_provider_available(),
-        "detected_gpu_name": stats.get("gpu_name"),
-    })
-
-
-@app.post("/api/gpu")
-async def api_set_gpu(payload: dict):
-    enabled = bool(payload.get("enabled"))
-    config = state["config"]
-    config["gpu_acceleration"] = enabled
-    save_config(config)
-
-    model_dir = Path(config["model_dir"])
-    engine: CaptionEngine = state["engine"]
-
-    def _reload():
-        if state["model_state"] == "ready":
-            engine.load_model(
-                str(model_dir), hotwords_file=str(HOTWORDS_PATH),
-                hotwords_score=config.get("hotwords_score", 2.5), use_gpu=enabled,
-            )
-
-    await asyncio.get_event_loop().run_in_executor(None, _reload)
-    return JSONResponse({"ok": True, "enabled": enabled, "active": engine.gpu_active})
 
 
 # ---- device pairing (see LocalOnlyMiddleware above) ------------------------
