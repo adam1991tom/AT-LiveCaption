@@ -412,6 +412,12 @@ async def api_get_caption_history():
     return JSONResponse(hub.get_caption_history())
 
 
+@app.post("/api/caption-history/clear")
+async def api_clear_caption_history():
+    hub.clear_caption_history()
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/corrections")
 async def api_get_corrections():
     return JSONResponse(list(reversed(corrections.load_corrections(CORRECTIONS_PATH))))
@@ -767,12 +773,17 @@ async def api_set_settings(payload: dict):
     for surface in ("audience", "overlay"):
         if surface in payload:
             config["appearance"][surface].update(payload[surface])
-            # Hard ceiling: past ~3 lines, captions stack up faster than
+            # Hard ceiling: past a few lines, captions stack up faster than
             # anyone can read them and start to feel like they're taking
             # over the screen -- caption-client.js enforces the same cap
             # independently, this just keeps the setting itself honest.
+            # Overlay sits over live video, so it gets a tighter cap (2,
+            # scrolling-ticker style) than the audience screen (3).
             if "max_lines" in config["appearance"][surface]:
-                config["appearance"][surface]["max_lines"] = min(3, int(config["appearance"][surface]["max_lines"]))
+                surface_cap = 2 if surface == "overlay" else 3
+                config["appearance"][surface]["max_lines"] = min(
+                    surface_cap, int(config["appearance"][surface]["max_lines"])
+                )
     save_config(config)
     await hub.broadcast(_appearance_message())
     return JSONResponse({"ok": True, "appearance": config["appearance"]})

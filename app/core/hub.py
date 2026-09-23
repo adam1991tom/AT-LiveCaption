@@ -83,3 +83,8 @@ class ConnectionHub:
     def get_caption_history(self) -> list[dict[str, Any]]:
         # Newest first -- that's how the Corrections tab wants to show it.
         return list(reversed(self.caption_history))
+
+    def clear_caption_history(self) -> None:
+        # Operator-triggered only (Corrections tab "Clear" button) -- corrections
+        # already made are stored separately in corrections.json and are untouched.
+        self.caption_history.clear()

@@ -51,20 +51,36 @@
       return Math.max(0, 1 - (age - hold) / fade);
     }
 
+    // Overlay sits over live video, so it never gets the audience screen's
+    // luxury of holding 3 lines -- it's a scrolling ticker capped at 2, and
+    // unlike the audience screen, the older of those 2 lines starts fading
+    // the moment a 2nd line lands, not only once a 3rd is already queued
+    // behind it. Otherwise a line can sit at full opacity for its whole
+    // hold_seconds while the next one is already spoken, which is what reads
+    // as captions "piling up into a paragraph."
+    const surfaceCap = surface === "overlay" ? 2 : 3;
+    const scrollMode = surface === "overlay";
+
     function render() {
       pruneExpired();
       // Hard ceiling regardless of configured appearance settings -- keeps
       // captions from ever stacking past a readable amount on screen.
-      const maxLines = Math.min(3, parseInt(els.box.dataset.maxLines || "3", 10));
+      const maxLines = Math.min(surfaceCap, parseInt(els.box.dataset.maxLines || String(surfaceCap), 10));
       const keep = Math.max(0, maxLines - (partial ? 1 : 0));
       // finals.slice(-0) is slice(0) in JS (whole array) -- guard the zero case explicitly.
       const shown = keep > 0 ? finals.slice(-keep) : [];
-      const beingDisplaced = finals.length > shown.length;
+      const queuedBeyond = finals.length > shown.length;
       let html = shown
         .map((f, i) => {
-          const isOldestShown = i === 0;
-          const hold = (isOldestShown && beingDisplaced) ? 0 : holdMs;
-          const fade = (isOldestShown && beingDisplaced) ? FAST_FADE_MS : fadeMs;
+          const isNewest = i === shown.length - 1;
+          // Ticker mode: any line that isn't the newest already has
+          // something newer showing above/after it, so it's on its way out
+          // regardless of its own age. Non-ticker (audience): only the
+          // oldest visible line fast-fades, and only once a newer final is
+          // already queued beyond what's shown.
+          const displaced = scrollMode ? !isNewest : (i === 0 && queuedBeyond);
+          const hold = displaced ? 0 : holdMs;
+          const fade = displaced ? FAST_FADE_MS : fadeMs;
           return "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts, hold, fade) + "\">" + escapeHtml(f.text) + "</div>";
         })
         .join("");

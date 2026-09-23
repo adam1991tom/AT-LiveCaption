@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 import threading
 import time
 from pathlib import Path
@@ -52,6 +53,39 @@ def _dbfs(samples: np.ndarray) -> float:
     if rms <= 1e-8:
         return SILENCE_FLOOR_DB
     return max(SILENCE_FLOOR_DB, 20.0 * math.log10(rms))
+
+
+# The model has no whole-word piece for most acronyms, so a spoken "UK" or
+# "NHS" comes back as separate single-letter words ("U K", "N H S") rather
+# than one token. Collapse runs of 2+ consecutive single-letter words into
+# one acronym so captions read the way they're actually meant.
+_ACRONYM_RE = re.compile(r"\b([A-Za-z])(?:\s+([A-Za-z]))+\b")
+
+
+def _join_spelled_acronyms(text: str) -> str:
+    return _ACRONYM_RE.sub(lambda m: m.group(0).replace(" ", "").upper(), text)
+
+
+def _merge_acronym_words(words: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    i, n = 0, len(words)
+    while i < n:
+        j = i
+        while j < n and len(words[j]["text"]) == 1 and words[j]["text"].isalpha():
+            j += 1
+        if j - i >= 2:
+            run = words[i:j]
+            merged.append(
+                {
+                    "text": "".join(w["text"] for w in run).upper(),
+                    "confidence": round(sum(w["confidence"] for w in run) / len(run), 3),
+                }
+            )
+            i = j
+        else:
+            merged.append(words[i])
+            i += 1
+    return merged
 
 
 def _words_from_tokens(tokens: list[str], ys_probs: list[float]) -> list[dict]:
@@ -279,8 +313,8 @@ class CaptionEngine:
 
                         is_endpoint = self.recognizer.is_endpoint(stream)
                         result = json.loads(self.recognizer.get_result_as_json_string(stream))
-                        text = result["text"].strip()
-                        words = _words_from_tokens(result["tokens"], result["ys_probs"]) if text else []
+                        text = _join_spelled_acronyms(result["text"].strip())
+                        words = _merge_acronym_words(_words_from_tokens(result["tokens"], result["ys_probs"])) if text else []
 
                         if is_endpoint:
                             if text:
