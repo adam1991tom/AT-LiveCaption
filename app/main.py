@@ -578,10 +578,8 @@ async def api_remove_trusted_device(payload: dict):
 
 
 @app.post("/api/test-caption")
-async def api_test_caption():
-    await hub.broadcast(
-        {"type": "final", "text": "This is a test caption from AT LiveCaption."}
-    )
+async def api_test_caption(text: str = "This is a test caption from AT LiveCaption."):
+    await hub.broadcast({"type": "final", "text": text})
     return JSONResponse({"ok": True})
 
 

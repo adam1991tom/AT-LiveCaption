@@ -28,6 +28,59 @@
       render();
     }
 
+    // A "final" is whatever the recognizer had built up since the last
+    // pause -- during fluent, uninterrupted speech (someone reading a
+    // prepared talk) that can be a long run-on sentence, which without this
+    // would just wrap inside its one line div into as many rows as it takes,
+    // regardless of the line cap above. Measure against the box's actual
+    // rendered width and split at word boundaries so each entry in `finals`
+    // is always one visual row, matching what max-lines is meant to mean.
+    let _measureCtx = null;
+    function measureCtx() {
+      if (!_measureCtx) _measureCtx = document.createElement("canvas").getContext("2d");
+      return _measureCtx;
+    }
+
+    function boxTextMetrics() {
+      const cs = getComputedStyle(els.box);
+      // .line's own left+right padding (0.4em each side) eats into the
+      // width text can actually use before wrapping.
+      const hPadding = parseFloat(cs.fontSize) * 0.8;
+      return {
+        font: cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily,
+        width: Math.max(50, els.box.clientWidth - hPadding),
+      };
+    }
+
+    function wrapToLines(text) {
+      const { font, width } = boxTextMetrics();
+      const ctx = measureCtx();
+      ctx.font = font;
+      const words = text.split(/\s+/).filter(Boolean);
+      const lines = [];
+      let cur = "";
+      for (const w of words) {
+        const test = cur ? cur + " " + w : w;
+        if (cur && ctx.measureText(test).width > width) {
+          lines.push(cur);
+          cur = w;
+        } else {
+          cur = test;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines.length ? lines : [text];
+    }
+
+    // The partial (still-being-spoken) line only ever gets 1 slot -- if it's
+    // grown past one visual row, show the tail end (the words just spoken),
+    // same as a live ticker rolling forward rather than backward.
+    function tailLine(text) {
+      if (!text) return text;
+      const lines = wrapToLines(text);
+      return lines[lines.length - 1];
+    }
+
     function pruneExpired() {
       const now = Date.now();
       for (let i = finals.length - 1; i >= 0; i--) {
@@ -137,16 +190,18 @@
           case "sync":
             finals.length = 0;
             const now = Date.now();
-            msg.recent_finals.forEach((text) => finals.push({ text, ts: now }));
-            partial = msg.partial || "";
+            msg.recent_finals.forEach((text) => {
+              wrapToLines(text).forEach((line) => finals.push({ text: line, ts: now }));
+            });
+            partial = tailLine(msg.partial || "");
             render();
             break;
           case "partial":
-            partial = msg.text;
+            partial = tailLine(msg.text);
             scheduleRender();
             break;
           case "final":
-            finals.push({ text: msg.text, ts: Date.now() });
+            wrapToLines(msg.text).forEach((line) => finals.push({ text: line, ts: Date.now() }));
             partial = "";
             render();
             break;
