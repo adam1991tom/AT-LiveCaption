@@ -129,7 +129,24 @@ class LocalOnlyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Static files ship with an ETag/Last-Modified but no Cache-Control, so
+    browsers apply their own heuristic freshness lifetime and can go on
+    serving a stale caption-client.js (or any other static asset) for a
+    while after an update even across a normal refresh -- only a hard
+    reload reliably bypasses it. Forcing revalidation means every request
+    still round-trips (cheap: a 304 when nothing changed), but a genuine
+    update is never missed."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app = FastAPI(title="AT LiveCaption")
+app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(LocalOnlyMiddleware)
 hub = ConnectionHub()
 
@@ -450,7 +467,14 @@ async def api_add_correction(payload: dict):
     def _rebuild_and_reload() -> list[str]:
         skipped = hotwords.build_hotwords_file(vocabulary, str(model_dir / "tokens.txt"), str(HOTWORDS_PATH))
         engine: CaptionEngine = state["engine"]
-        if state["model_state"] == "ready":
+        # A correction is meant to be a quick, in-the-moment fix during a
+        # live session, not a settings change -- unlike the Vocabulary tab's
+        # explicit Save, it must never stop and restart the audio device
+        # (load_model()'s reload does exactly that, and can take several
+        # seconds). If the engine is actively capturing, just leave the
+        # freshly-written hotwords file in place; it takes effect on the
+        # next start/reload regardless, without ever interrupting the room.
+        if state["model_state"] == "ready" and not engine.is_running():
             engine.load_model(
                 str(model_dir), hotwords_file=str(HOTWORDS_PATH),
                 hotwords_score=config.get("hotwords_score", 2.5), use_gpu=config.get("gpu_acceleration", False),
@@ -579,7 +603,8 @@ async def api_remove_trusted_device(payload: dict):
 
 @app.post("/api/test-caption")
 async def api_test_caption(text: str = "This is a test caption from AT LiveCaption."):
-    await hub.broadcast({"type": "final", "text": text})
+    words = [{"text": w, "confidence": 0.5} for w in text.split()]
+    await hub.broadcast({"type": "final", "text": text, "words": words})
     return JSONResponse({"ok": True})
 
 
