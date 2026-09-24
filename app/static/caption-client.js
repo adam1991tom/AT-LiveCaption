@@ -147,18 +147,25 @@
       els.box.innerHTML = html;
     }
 
-    // ---- audience: genuine scroll-up-and-fade -----------------------------
+    // ---- audience: genuine continuous scroll-up-and-fade -------------------
     // Unlike the overlay ticker, this keeps one persistent DOM element per
     // caption (keyed by id) instead of rebuilding the box from scratch every
     // tick -- rebuilding from scratch gives the browser nothing to animate
-    // between, which is why captions read as "stuck" rather than advancing.
-    // When a line is bumped out of the visible window by a newer one, it's
-    // switched to position:absolute at its current on-screen spot (so
-    // removing it from the flow doesn't disturb the lines still showing,
-    // which -- anchored to the bottom by default -- naturally don't need to
-    // move at all) and animated floating up by its own height while fading,
-    // like it's scrolling off the top of the screen.
-    const EXIT_MS = 700;
+    // between, which is why captions previously read as "stuck" rather than
+    // advancing. This uses the FLIP technique (First/Last/Invert/Play): read
+    // every visible line's position before the DOM changes, let the change
+    // happen (new line appended, oldest bumped out), read the new positions,
+    // then animate each surviving line from its old spot to its new one.
+    // Without this, only the exiting line would visibly move while the
+    // still-showing lines snapped instantly -- which reads as broken motion,
+    // not a scroll. Here every visible line glides up together, like
+    // reading scrolling subtitles, while the bumped line keeps floating
+    // upward off the top and fading as it goes.
+    const MOVE_MS = 550;
+    const EXIT_MS = 750;
+    // A gentle deceleration (fast start, soft landing) reads as smoother
+    // than the browser's default "ease" for this kind of continuous motion.
+    const SMOOTH_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
     const lineEls = new Map(); // id -> element
     let partialEl = null;
 
@@ -171,6 +178,7 @@
       el.style.left = left + "px";
       el.style.width = width + "px";
       el.style.margin = "0";
+      el.style.transform = "translateY(0)";
       // Force the browser to commit the position:absolute placement above
       // before changing opacity/transform below, or it can coalesce both
       // into one paint and skip the animation entirely. requestAnimationFrame
@@ -179,7 +187,7 @@
       // reading a layout property forces a synchronous flush that works
       // regardless of tab visibility.
       void el.offsetHeight;
-      el.style.transition = "opacity " + EXIT_MS + "ms ease, transform " + EXIT_MS + "ms ease";
+      el.style.transition = "opacity " + EXIT_MS + "ms " + SMOOTH_EASE + ", transform " + EXIT_MS + "ms " + SMOOTH_EASE;
       el.style.opacity = "0";
       el.style.transform = "translateY(-" + height + "px)";
       setTimeout(() => el.remove(), EXIT_MS + 150);
@@ -192,10 +200,17 @@
       const shown = keep > 0 ? finals.slice(-keep) : [];
       const shownIds = new Set(shown.map((f) => f.id));
 
+      // FIRST: where every still-in-flow visible line sits right now.
+      const before = new Map();
+      for (const [id, el] of lineEls) {
+        if (shownIds.has(id)) before.set(id, el.getBoundingClientRect().top);
+      }
+
       for (const [id, el] of Array.from(lineEls.entries())) {
         if (!shownIds.has(id)) exitLine(id, el);
       }
 
+      const isNew = new Set();
       shown.forEach((f) => {
         let el = lineEls.get(f.id);
         if (!el) {
@@ -206,13 +221,38 @@
           el.style.opacity = "0";
           els.box.appendChild(el);
           lineEls.set(f.id, el);
-          void el.offsetHeight; // see exitLine -- same forced-flush reasoning, same rAF-throttling risk
-          el.style.transition = "opacity 0.4s ease";
-          el.style.opacity = String(opacityFor(f.ts, holdMs, fadeMs));
+          isNew.add(f.id);
           return;
         }
         el.textContent = f.text;
-        el.style.opacity = String(opacityFor(f.ts, holdMs, fadeMs));
+      });
+
+      // LAST: where each line ends up now that the DOM reflects the new set
+      // -- then INVERT (jump it back to where it was, with transitions off)
+      // and PLAY (turn transitions on, remove the jump) so it visibly glides
+      // from old position to new.
+      shown.forEach((f) => {
+        const el = lineEls.get(f.id);
+        const targetOpacity = String(opacityFor(f.ts, holdMs, fadeMs));
+        if (isNew.has(f.id)) {
+          // Brand new line: rise gently into place from just below, rather
+          // than just popping in, to match the same upward motion theme.
+          el.style.transform = "translateY(10px)";
+          void el.offsetHeight;
+          el.style.transition = "opacity 0.4s " + SMOOTH_EASE + ", transform 0.4s " + SMOOTH_EASE;
+          el.style.opacity = targetOpacity;
+          el.style.transform = "translateY(0)";
+          return;
+        }
+        const prevTop = before.get(f.id);
+        const newTop = el.getBoundingClientRect().top;
+        const delta = prevTop !== undefined ? prevTop - newTop : 0;
+        el.style.transition = "none";
+        el.style.transform = delta ? "translateY(" + delta + "px)" : "translateY(0)";
+        void el.offsetHeight;
+        el.style.transition = "transform " + MOVE_MS + "ms " + SMOOTH_EASE + ", opacity " + MOVE_MS + "ms " + SMOOTH_EASE;
+        el.style.transform = "translateY(0)";
+        el.style.opacity = targetOpacity;
       });
 
       if (partial) {
