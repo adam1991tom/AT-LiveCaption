@@ -47,20 +47,24 @@ def _join_spelled_acronyms(text: str) -> str:
 
 
 # Background music/noise has no real words for the model to latch onto, so
-# it tends to guess a repeated filler sound instead of staying silent --
-# heard live as caption spam like "um um um". This isn't a real acoustic
-# music detector (that would need a trained classifier and a labelled
-# dataset to tune reliably, which isn't something to guess at) -- it's a
-# narrow, honest fix for that exact symptom: an utterance made up of
-# nothing but filler words, with zero real content, is relabelled rather
-# than shown as noise. A single filler word on its own is left alone --
-# that's just normal hesitant speech.
+# it tends to guess a filler sound instead of staying silent -- heard live
+# as caption spam like "um", finalized over and over (each short gap in the
+# music re-triggers the endpoint detector, so it's usually many separate
+# single-word "um" finals in a row, not one multi-word utterance). This
+# isn't a real acoustic music detector (that would need a trained
+# classifier and a labelled dataset to tune reliably, which isn't
+# something to guess at) -- it's a narrow, honest fix for that exact
+# symptom: any utterance made up of nothing but filler words -- one word
+# or several -- is relabelled rather than shown as noise. The tradeoff:
+# someone's genuine one-word "um" while thinking will also show as
+# [MUSIC] rather than "um" -- a small cost, since captioning "um" on its
+# own was never informative anyway.
 _FILLER_WORDS = {"um", "uh", "umm", "uhh", "erm", "hmm", "mm", "mmm", "huh"}
 
 
 def _is_filler_spam(text: str) -> bool:
     words = re.findall(r"[a-zA-Z']+", text.lower())
-    return len(words) >= 2 and all(w in _FILLER_WORDS for w in words)
+    return bool(words) and all(w in _FILLER_WORDS for w in words)
 
 
 def _merge_acronym_words(words: list[dict]) -> list[dict]:
