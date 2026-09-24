@@ -387,6 +387,13 @@ function updateLoadingOverlay(engine) {
 
 let appearance = {};
 
+// Matches the server-side clamp in /api/settings -- kept here too so the
+// field itself refuses an out-of-range value instead of silently having it
+// overridden after Save with no visible explanation (that mismatch --
+// type 5, get 3 back with no feedback -- is exactly what reads as "this
+// setting doesn't work").
+const MAX_LINES_CAP = { audience: 3, overlay: 2 };
+
 function buildFields(containerId, surface) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
@@ -394,7 +401,7 @@ function buildFields(containerId, surface) {
     const row = document.createElement("div");
     row.className = "field";
     const lbl = document.createElement("label");
-    lbl.textContent = label;
+    lbl.textContent = key === "max_lines" ? label + " (1-" + MAX_LINES_CAP[surface] + ")" : label;
     let input;
     if (type === "select") {
       input = document.createElement("select");
@@ -407,6 +414,7 @@ function buildFields(containerId, surface) {
       input = document.createElement("input");
       input.type = type;
       if (type === "number") input.step = "any";
+      if (key === "max_lines") { input.min = 1; input.max = MAX_LINES_CAP[surface]; }
     }
     input.dataset.key = key;
     input.id = surface + "-" + key;
@@ -444,12 +452,25 @@ fetch("/api/settings").then(r => r.json()).then(data => {
   fillFields("overlay");
 });
 
-document.getElementById("save-audience").onclick = () => {
-  fetch("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({audience: collectFields("audience")}) });
-};
-document.getElementById("save-overlay").onclick = () => {
-  fetch("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({overlay: collectFields("overlay")}) });
-};
+// Always re-fill from what the server actually saved (not just what was
+// typed) -- max_lines in particular gets silently clamped server-side, so
+// without this the field would keep showing the typed value forever even
+// though a different one took effect, looking exactly like "did nothing".
+function saveAppearance(surface) {
+  const btn = document.getElementById("save-" + surface);
+  const originalText = btn.textContent;
+  fetch("/api/settings", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ [surface]: collectFields(surface) }),
+  }).then(r => r.json()).then((data) => {
+    appearance = data.appearance;
+    fillFields(surface);
+    btn.textContent = "Saved";
+    setTimeout(() => { btn.textContent = originalText; }, 1200);
+  });
+}
+document.getElementById("save-audience").onclick = () => saveAppearance("audience");
+document.getElementById("save-overlay").onclick = () => saveAppearance("overlay");
 
 // ---- Device pairing: a code shows up here (top of page, any tab) either
 // because the admin clicked Generate Code, or because another device just
