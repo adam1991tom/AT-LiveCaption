@@ -13,3 +13,4 @@ dist/
 FINAL-INSTALLER/
 branding/ico/
 installer/wizard/
+installer/deps/

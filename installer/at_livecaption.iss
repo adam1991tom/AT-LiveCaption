@@ -1,5 +1,5 @@
 #define MyAppName "AT LiveCaption"
-#define MyAppVersion "2.5.1"
+#define MyAppVersion "2.5.2"
 #define MyAppPublisher "AT LiveCaption"
 #define MyAppExeName "ATLiveCaption.exe"
 #define MyAppPort "8765"
@@ -49,6 +49,13 @@ Name: "startupicon"; Description: "Start AT LiveCaption automatically when Windo
 ; supporting DLLs/pyc files), not a single file -- see at_livecaption.spec
 ; for why onefile was dropped.
 Source: "..\dist\ATLiveCaption\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Microsoft's own tiny (~2MB) Evergreen Bootstrapper -- fetches the real
+; WebView2 Runtime online, only actually run below if this machine doesn't
+; already have it. Deliberately not the ~150MB offline "Fixed Version"
+; runtime: fleet/managed machines that can reach Action1 at all can reach
+; Microsoft's CDN too, and bundling the full runtime would roughly double
+; this installer's size for something most machines already have anyway.
+Source: "deps\MicrosoftEdgeWebView2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\AT LiveCaption"; Filename: "{app}\{#MyAppExeName}"
@@ -62,6 +69,14 @@ Name: "{autodesktop}\AT LiveCaption"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "AT LiveCaption"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startupicon
 
 [Run]
+; The app's whole UI is a WebView2 window (see app/window.py) -- without
+; the runtime, that window shows a "missing or invalid token" error from
+; WebView2 itself the instant it opens, before any of the app's own code
+; runs. Most machines already have this (it ships with Windows 10/11 and
+; Edge), which is exactly why this is skipped whenever IsWebView2Installed
+; already finds it -- this only actually does anything on the machines
+; that need it, e.g. an older or locked-down managed image.
+Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Check: not IsWebView2Installed(); Flags: waituntilterminated
 Filename: "netsh.exe"; Parameters: "advfirewall firewall add rule name=""AT LiveCaption"" dir=in action=allow protocol=TCP localport={#MyAppPort} profile=private,domain"; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
 ; Only ever runs when the operator leaves "Launch AT LiveCaption" checked on
 ; the finish page -- there is no separate dependency/runtime install step
@@ -76,6 +91,20 @@ Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""AT L
 ; an uninstall should never silently destroy.
 
 [Code]
+// Microsoft's own documented detection method for the WebView2 Runtime:
+// a non-empty, non-"0.0.0.0" pv value under this exact registry path (the
+// GUID is fixed, published by Microsoft for exactly this check) means it's
+// already installed -- per-machine (64-bit or 32-bit OS) or per-user.
+function IsWebView2Installed(): Boolean;
+var
+  Version: String;
+begin
+  Result :=
+    (RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
+end;
+
 // Belt-and-suspenders alongside the skipifsilent flag above: WizardSilent()
 // is evaluated at runtime by whatever process actually executes the [Run]
 // entries, so unlike the flag it can't be defeated by command-line switches
