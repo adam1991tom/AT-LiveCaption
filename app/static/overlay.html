@@ -22,9 +22,15 @@
   #box .line {
     background-color: color-mix(in srgb, var(--bg-color) calc(var(--bg-opacity) * 100%), transparent);
     display: block;
-    padding: 0.15em 0.4em;
-    margin: 0.15em 0;
-    border-radius: 4px;
+    padding: 0.35em 0.75em;
+    margin: 0.2em 0;
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    /* Frosted-glass look over live video -- softens whatever's moving
+       behind the bar instead of the text just sitting on a flat rectangle. */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     transition: opacity 0.2s linear;
   }
 </style>

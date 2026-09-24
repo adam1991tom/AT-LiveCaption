@@ -41,7 +41,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "trusted_control_devices": [],
     "appearance": {
         "audience": {
-            "font_family": "Arial, sans-serif",
+            "font_family": "'Segoe UI', system-ui, -apple-system, sans-serif",
             "font_size": 64,
             "font_weight": 700,
             "text_align": "center",
@@ -55,7 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "fade_seconds": 1.5,
         },
         "overlay": {
-            "font_family": "Arial, sans-serif",
+            "font_family": "'Segoe UI', system-ui, -apple-system, sans-serif",
             "font_size": 44,
             "font_weight": 700,
             "text_align": "center",

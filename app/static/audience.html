@@ -17,21 +17,22 @@
   #wrap[data-position="bottom"] { justify-content: flex-end; }
   #box {
     background-color: rgba(0,0,0,0);
-    /* Positioned so an outgoing line can switch to position:absolute (see
-       caption-client.js) and animate away without disturbing the normal
-       flow of the lines still on screen. */
-    position: relative;
   }
   /* block, not inline-block: a shrink-to-fit box visibly wobbles side to
      side as the live partial line grows/shrinks word by word, especially
      with centered text (both edges move). A full-width bar keeps the
-     line's position fixed and only the text inside it changes. */
+     line's position fixed and only the text inside it changes. Same
+     rounded-card treatment as the overlay -- the two are meant to look
+     like the same product, just sized for a full screen instead of a
+     lower-third over camera. */
   #box .line {
     background-color: color-mix(in srgb, var(--bg-color) calc(var(--bg-opacity) * 100%), transparent);
     display: block;
-    padding: 0.15em 0.4em;
-    margin: 0.15em 0;
-    border-radius: 4px;
+    padding: 0.35em 0.75em;
+    margin: 0.2em 0;
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    transition: opacity 0.2s linear;
   }
 </style>
 </head>
