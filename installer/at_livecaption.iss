@@ -1,5 +1,5 @@
 #define MyAppName "AT LiveCaption"
-#define MyAppVersion "2.5.2"
+#define MyAppVersion "2.5.3"
 #define MyAppPublisher "AT LiveCaption"
 #define MyAppExeName "ATLiveCaption.exe"
 #define MyAppPort "8765"

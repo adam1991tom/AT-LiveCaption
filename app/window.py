@@ -14,6 +14,39 @@ from app.core.procutil import acquire_window_instance_lock, get_base_url
 
 BASE_URL = get_base_url()
 
+
+def _disable_webview2_sso() -> None:
+    """This app never asks for any Microsoft/Windows-account sign-in, but
+    WebView2 can still probe the OS account broker (WAM) for single sign-on
+    on its own. Seen in the wild: a broken WAM logon session on one
+    machine (dsregcmd showed WamDefaultSet: ERROR 0x80070520, unrelated to
+    any Azure AD/domain join -- this laptop was joined to neither) made
+    that probe fail with WebView2's own "missing or invalid token" error
+    the instant the window opened, before any of this app's own code ran.
+    A stale Azure AD Primary Refresh Token on a domain-joined machine can
+    trip the same failure. pywebview doesn't expose a setting for this, so
+    this patches its EdgeChrome class to append the one Chromium flag that
+    turns the probe off entirely -- safe regardless of cause, since this
+    app never wanted that integration in the first place.
+    """
+    try:
+        from webview.platforms import edgechromium
+    except ImportError:
+        return  # not on the edgechromium backend -- nothing to patch
+
+    original_init = edgechromium.EdgeChrome.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self.webview.CreationProperties.AdditionalBrowserArguments += (
+            " --disable-features=msSingleSignOn"
+        )
+
+    edgechromium.EdgeChrome.__init__ = patched_init
+
+
+_disable_webview2_sso()
+
 PAGES = {
     "control": ("AT LiveCaption - Control", "/", 1100, 850),
     "audience": ("AT LiveCaption - Audience Preview", "/audience", 960, 540),
