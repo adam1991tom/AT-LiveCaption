@@ -114,8 +114,8 @@
     <img id="brand-logo" src="/static/branding/at_gear_blue.png" alt="">
     <h1>AT LiveCaption</h1>
     <div class="top-actions">
-      <a class="btn-open" href="/audience" target="_blank">&#128225; Audience Screen</a>
-      <a class="btn-open secondary" href="/overlay" target="_blank">&#127909; Camera Overlay</a>
+      <a class="btn-open" id="open-audience" href="/audience" target="_blank">&#128225; Audience Screen</a>
+      <a class="btn-open secondary" id="open-overlay" href="/overlay" target="_blank">&#127909; Camera Overlay</a>
     </div>
   </div>
   <div class="sub">
@@ -291,6 +291,32 @@
   </div>
 
 <script>
+// This page is served identically whether it's opened in a real browser
+// tab (locally or from another device on the network) or inside the
+// app's own native window (WebView2, via app/window.py). A real browser
+// handles target="_blank" itself; the native window is just an embedded
+// browser shell with no tab concept, so target="_blank" there silently
+// does nothing -- pywebview injects a `window.pywebview` global into
+// every page it hosts, which is what tells the two cases apart. Only in
+// that case do these buttons need to ask the server to spawn a whole new
+// native window (POST /api/open-window) instead of just following the
+// link -- a remote device controlling this app over the network should
+// always just open the link in its own browser, never spawn a window on
+// this machine.
+function wireNativeWindowButton(id, page) {
+  const el = document.getElementById(id);
+  el.addEventListener("click", (e) => {
+    if (!window.pywebview) return; // let the normal link/target="_blank" happen
+    e.preventDefault();
+    fetch("/api/open-window", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ page }),
+    });
+  });
+}
+wireNativeWindowButton("open-audience", "audience");
+wireNativeWindowButton("open-overlay", "overlay");
+
 const FIELD_SPECS = [
   ["font_family", "Font family", "text"],
   ["font_size", "Font size", "number"],

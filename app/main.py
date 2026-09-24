@@ -11,6 +11,8 @@ import asyncio
 import ipaddress
 import re
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -24,7 +26,7 @@ from app.core import audio_devices, corrections, hotwords, model_download, netwo
 from app.core.asr_engine import CaptionEngine
 from app.core.config import DATA_DIR, THEMES, load_config, save_config
 from app.core.hub import ConnectionHub
-from app.core.procutil import get_port
+from app.core.procutil import CREATIONFLAGS, get_port
 from app.core.transcript import TranscriptWriter, to_srt, to_vtt
 from app import version
 
@@ -267,6 +269,33 @@ async def shutdown() -> None:
     engine: CaptionEngine = state["engine"]
     if engine:
         engine.stop()
+
+
+# ---- native window launcher -------------------------------------------
+# A plain <a target="_blank"> works fine in a real browser tab, but the
+# control panel is often viewed inside its own native window (WebView2, via
+# app/window.py) -- an embedded browser shell with no concept of "open a
+# new tab", so target="_blank" there silently does nothing. Opening the
+# Audience/Overlay screens as their own native windows means spawning a
+# whole new OS process (mirrors app/tray.py's own menu items exactly, right
+# down to reusing the same instance lock so a 2nd click focuses the
+# existing window instead of opening a duplicate) -- something no
+# client-side link can do on its own, so the control page calls this
+# instead when it detects it's running inside that shell (see control.html).
+def _window_argv(page: str) -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, f"--window={page}"]
+    entry = Path(__file__).resolve().parent.parent / "app_entry.py"
+    return [sys.executable, str(entry), f"--window={page}"]
+
+
+@app.post("/api/open-window")
+async def api_open_window(payload: dict):
+    page = payload.get("page")
+    if page not in ("control", "audience", "overlay"):
+        return JSONResponse({"error": "unknown page"}, status_code=400)
+    subprocess.Popen(_window_argv(page), creationflags=CREATIONFLAGS)
+    return JSONResponse({"ok": True})
 
 
 # ---- pages -----------------------------------------------------------------
