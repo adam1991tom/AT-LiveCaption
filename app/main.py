@@ -31,6 +31,12 @@ from app import version
 HOTWORDS_PATH = DATA_DIR / "hotwords.txt"
 CORRECTIONS_PATH = DATA_DIR / "corrections.json"
 
+# Not a design opinion about how many lines is readable -- just a sanity
+# bound so a stray value (an accidental extra zero, a bad paste) can't
+# leave the app trying to render something absurd. The operator is fully
+# in control of max_lines up to this within the Appearance tab.
+MAX_LINES_SAFETY_CAP = 20
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 # The server binds 0.0.0.0 (see server_main.py) so the audience screen and
@@ -772,16 +778,15 @@ async def api_set_settings(payload: dict):
     for surface in ("audience", "overlay"):
         if surface in payload:
             config["appearance"][surface].update(payload[surface])
-            # Hard ceiling: past a few lines, captions stack up faster than
-            # anyone can read them and start to feel like they're taking
-            # over the screen -- caption-client.js enforces the same cap
-            # independently, this just keeps the setting itself honest.
-            # Overlay sits over live video, so it gets a tighter cap (2,
-            # scrolling-ticker style) than the audience screen (3).
+            # No design-imposed cap here -- the operator knows their own
+            # screen and font size better than a fixed default does, and
+            # asked for this to be fully customizable so captions can fill
+            # the screen if that's the look they want. MAX_LINES_SAFETY_CAP
+            # is purely a sanity bound (nothing enforces this as "the right
+            # number of lines"), not a design opinion about readability.
             if "max_lines" in config["appearance"][surface]:
-                surface_cap = 2 if surface == "overlay" else 3
-                config["appearance"][surface]["max_lines"] = min(
-                    surface_cap, int(config["appearance"][surface]["max_lines"])
+                config["appearance"][surface]["max_lines"] = max(
+                    1, min(MAX_LINES_SAFETY_CAP, int(config["appearance"][surface]["max_lines"]))
                 )
     save_config(config)
     await hub.broadcast(_appearance_message())

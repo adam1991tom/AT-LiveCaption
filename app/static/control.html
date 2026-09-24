@@ -387,12 +387,13 @@ function updateLoadingOverlay(engine) {
 
 let appearance = {};
 
-// Matches the server-side clamp in /api/settings -- kept here too so the
-// field itself refuses an out-of-range value instead of silently having it
-// overridden after Save with no visible explanation (that mismatch --
-// type 5, get 3 back with no feedback -- is exactly what reads as "this
-// setting doesn't work").
-const MAX_LINES_CAP = { audience: 3, overlay: 2 };
+// Matches MAX_LINES_SAFETY_CAP in main.py / caption-client.js -- fully
+// customizable up to this, it's only a sanity bound (not a design opinion
+// about readability), kept here too so the field itself refuses an
+// out-of-range value instead of silently having it overridden after Save
+// with no visible explanation (that mismatch -- type 25, get 20 back with
+// no feedback -- is exactly what reads as "this setting doesn't work").
+const MAX_LINES_CAP = 20;
 
 function buildFields(containerId, surface) {
   const container = document.getElementById(containerId);
@@ -401,7 +402,7 @@ function buildFields(containerId, surface) {
     const row = document.createElement("div");
     row.className = "field";
     const lbl = document.createElement("label");
-    lbl.textContent = key === "max_lines" ? label + " (1-" + MAX_LINES_CAP[surface] + ")" : label;
+    lbl.textContent = key === "max_lines" ? label + " (1-" + MAX_LINES_CAP + ")" : label;
     let input;
     if (type === "select") {
       input = document.createElement("select");
@@ -414,7 +415,7 @@ function buildFields(containerId, surface) {
       input = document.createElement("input");
       input.type = type;
       if (type === "number") input.step = "any";
-      if (key === "max_lines") { input.min = 1; input.max = MAX_LINES_CAP[surface]; }
+      if (key === "max_lines") { input.min = 1; input.max = MAX_LINES_CAP; }
     }
     input.dataset.key = key;
     input.id = surface + "-" + key;

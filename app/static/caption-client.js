@@ -113,9 +113,11 @@
       return Math.max(0, 1 - (age - hold) / fade);
     }
 
-    // Overlay sits over live video, so it gets a tighter cap than the
-    // full-screen audience display.
-    const surfaceCap = surface === "overlay" ? 2 : 3;
+    // Not a design opinion about readability -- the operator sets max_lines
+    // themselves in the Appearance tab, fully customizable up to this. This
+    // is purely a sanity bound (matches the server-side one) so a stray
+    // value can't leave the page trying to render something absurd.
+    const MAX_LINES_SAFETY_CAP = 20;
 
     function escapeHtml(text) {
       const d = document.createElement("div");
@@ -123,11 +125,21 @@
       return d.innerHTML;
     }
 
+    // Overlay is a tight, compact ticker (2 lines by default) -- any line
+    // that isn't the newest already has something newer next to it, so it
+    // reads best fading out immediately rather than holding. That rule
+    // would backfire for the audience screen once max_lines is turned up
+    // to fill a screen with several lines of history: fading out every
+    // line except the newest would mean only ever seeing 1-2 lines
+    // solid, however many the operator configured. Audience instead holds
+    // every visible line for its own hold/fade time, and only fast-fades
+    // the single oldest one, and only once it's actually about to be
+    // pushed out by overflow (a newer line queued beyond what's shown).
+    const isOverlay = surface === "overlay";
+
     function render() {
       pruneExpired();
-      // Hard ceiling regardless of configured appearance settings -- keeps
-      // captions from ever stacking past a readable amount on screen.
-      const maxLines = Math.min(surfaceCap, parseInt(els.box.dataset.maxLines || String(surfaceCap), 10));
+      const maxLines = Math.min(MAX_LINES_SAFETY_CAP, parseInt(els.box.dataset.maxLines || "3", 10));
       const keep = Math.max(0, maxLines - (partial ? 1 : 0));
       // finals.slice(-0) is slice(0) in JS (whole array) -- guard the zero case explicitly.
       const shown = keep > 0 ? finals.slice(-keep) : [];
@@ -135,13 +147,7 @@
       let html = shown
         .map((f, i) => {
           const isNewest = i === shown.length - 1;
-          // Any line that isn't the newest already has something newer
-          // showing after it, so it's on its way out regardless of its own
-          // age -- fading it out quickly (rather than waiting on its own
-          // full hold timer, which it would likely never reach anyway) is
-          // what keeps this reading as a ticker advancing, not captions
-          // piling up into a paragraph.
-          const displaced = !isNewest || (i === 0 && queuedBeyond);
+          const displaced = isOverlay ? (!isNewest || (i === 0 && queuedBeyond)) : (i === 0 && queuedBeyond);
           const hold = displaced ? 0 : holdMs;
           const fade = displaced ? FAST_FADE_MS : fadeMs;
           return "<div class=\"line\" style=\"opacity:" + opacityFor(f.ts, hold, fade) + "\">" + escapeHtml(f.text) + "</div>";
