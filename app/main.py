@@ -129,18 +129,25 @@ class LocalOnlyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+_NO_CACHE_PAGES = {"/", "/audience", "/overlay", "/about", "/request-access"}
+
+
 class NoCacheStaticMiddleware(BaseHTTPMiddleware):
-    """Static files ship with an ETag/Last-Modified but no Cache-Control, so
-    browsers apply their own heuristic freshness lifetime and can go on
-    serving a stale caption-client.js (or any other static asset) for a
-    while after an update even across a normal refresh -- only a hard
-    reload reliably bypasses it. Forcing revalidation means every request
-    still round-trips (cheap: a 304 when nothing changed), but a genuine
-    update is never missed."""
+    """Static files and the pages that load them ship with an ETag/
+    Last-Modified but no Cache-Control, so browsers apply their own
+    heuristic freshness lifetime and can go on serving a stale page or
+    script for a while after an update even across a normal refresh --
+    only a hard reload reliably bypasses it. The page routes themselves
+    (control.html, audience.html, overlay.html, ...) need this just as
+    much as /static/*: each one carries its own inline script, so a
+    cached copy of the PAGE is just as stale as a cached copy of a script
+    file would be. Forcing revalidation means every request still
+    round-trips (cheap: a 304 when nothing changed), but a genuine update
+    is never missed."""
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/static/"):
+        if request.url.path.startswith("/static/") or request.url.path in _NO_CACHE_PAGES:
             response.headers["Cache-Control"] = "no-cache"
         return response
 
