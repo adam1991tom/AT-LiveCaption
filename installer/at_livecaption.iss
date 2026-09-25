@@ -1,8 +1,14 @@
 #define MyAppName "AT LiveCaption"
-#define MyAppVersion "2.6.0"
+#define MyAppVersion "2.6.1"
 #define MyAppPublisher "AT LiveCaption"
 #define MyAppExeName "ATLiveCaption.exe"
 #define MyAppPort "8765"
+; The app falls back to a higher port if 8765 is already permanently held
+; by something else on this machine (see resolve_server_port() in
+; app/core/procutil.py) -- opening the whole range up front means LAN
+; viewers (audience/overlay on another device) still reach it through
+; the firewall even when that fallback kicks in.
+#define MyAppPortMax "8814"
 
 [Setup]
 AppId={{B8F1E2A0-6C3D-4E7B-9F2A-3D8C4E5F6A7B}
@@ -77,7 +83,7 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; already finds it -- this only actually does anything on the machines
 ; that need it, e.g. an older or locked-down managed image.
 Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Check: not IsWebView2Installed(); Flags: waituntilterminated
-Filename: "netsh.exe"; Parameters: "advfirewall firewall add rule name=""AT LiveCaption"" dir=in action=allow protocol=TCP localport={#MyAppPort} profile=private,domain"; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
+Filename: "netsh.exe"; Parameters: "advfirewall firewall add rule name=""AT LiveCaption"" dir=in action=allow protocol=TCP localport={#MyAppPort}-{#MyAppPortMax} profile=private,domain"; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
 ; Launches when the operator leaves "Launch AT LiveCaption" checked on the
 ; finish page (the normal interactive case), OR when /AUTORELAUNCH was
 ; explicitly passed on the command line -- the app's own self-update passes

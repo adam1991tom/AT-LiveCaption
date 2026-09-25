@@ -21,6 +21,47 @@ def get_base_url() -> str:
     return f"http://127.0.0.1:{get_port()}"
 
 
+def _port_available(port: int) -> bool:
+    # Must probe 0.0.0.0, not 127.0.0.1 -- the real server binds "0.0.0.0"
+    # (see server_main.py) so it's reachable from other devices on the LAN
+    # for the audience/overlay pages. Windows treats those two addresses as
+    # separate bindable resources: probing 127.0.0.1 alone can report a port
+    # "available" even while something else already holds 0.0.0.0 on it,
+    # which is exactly the case this function exists to catch.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("0.0.0.0", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def resolve_server_port() -> int:
+    """The configured port can already be permanently held by some other,
+    completely unrelated app on this machine (seen in the wild: another of
+    the operator's own tools, auto-starting at login, holding the same
+    default port every time). Previously that meant our own server just
+    failed to bind while every native window still loaded whatever *that*
+    app happened to serve on the port instead, displaying its response as
+    if it were ours -- e.g. a plain "Missing or invalid token" from a
+    totally unrelated app, easy to mistake for a WebView2/auth problem.
+    Probe upward from the configured port for the first one actually free.
+    Call this once, in the tray process, after its own instance lock is
+    already acquired (that lock stays tied to the fixed configured port,
+    so "only one AT LiveCaption running" stays correct even when a launch
+    ends up on a different actual port) and before spawning anything --
+    every child (the server, every native window) inherits the resolved
+    port from the environment.
+    """
+    start = get_port()
+    for candidate in range(start, start + 50):
+        if _port_available(candidate):
+            return candidate
+    return start  # give up gracefully -- let it fail the same way as before
+
+
 def acquire_tray_instance_lock() -> bool:
     """A second tray launch (double-clicked again, or racing itself right
     at process start) would otherwise start a whole second tray+server

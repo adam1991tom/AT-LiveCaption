@@ -3,6 +3,7 @@ it if it dies unexpectedly, and gives the operator quick links + control.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -13,9 +14,8 @@ import pystray
 from PIL import Image, ImageDraw
 
 from app.core import autostart, update_check
-from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock, get_base_url
+from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock, resolve_server_port
 
-BASE_URL = get_base_url()
 POLL_SECONDS = 2.0
 
 
@@ -114,6 +114,13 @@ def main() -> None:
     # True when a real update is genuinely already underway.
     if update_check.try_auto_update():
         return
+
+    # Resolve the real working port now, after the instance lock above is
+    # already ours -- see resolve_server_port() for why this has to happen
+    # here rather than relying on the configured default. Every child
+    # process spawned from here on (the server, every native window)
+    # inherits it via the environment.
+    os.environ["AT_LIVECAPTION_PORT"] = str(resolve_server_port())
 
     supervisor = ServerSupervisor()
     supervisor.start()
