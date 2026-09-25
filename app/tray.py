@@ -14,9 +14,20 @@ import pystray
 from PIL import Image, ImageDraw
 
 from app.core import autostart, update_check
-from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock, resolve_server_port
+from app.core.procutil import (
+    CREATIONFLAGS,
+    acquire_tray_instance_lock,
+    assign_to_job,
+    create_kill_on_close_job,
+    resolve_server_port,
+)
 
 POLL_SECONDS = 2.0
+
+# Set once in main(), before anything is spawned -- see create_kill_on_close_job()
+# for why every child process (the server, every native window, however it
+# was opened) needs to land in this same job.
+_job: int | None = None
 
 
 def _window_argv(page: str) -> list[str]:
@@ -27,7 +38,8 @@ def _window_argv(page: str) -> list[str]:
 
 
 def open_window(page: str) -> None:
-    subprocess.Popen(_window_argv(page), creationflags=CREATIONFLAGS)
+    proc = subprocess.Popen(_window_argv(page), creationflags=CREATIONFLAGS)
+    assign_to_job(_job, proc)
 
 
 def _make_icon(color: str) -> Image.Image:
@@ -63,6 +75,7 @@ class ServerSupervisor:
             if self.process and self.process.poll() is None:
                 return
             self.process = subprocess.Popen(self._server_argv(), creationflags=CREATIONFLAGS)
+            assign_to_job(_job, self.process)
 
     def stop(self) -> None:
         with self._lock:
@@ -114,6 +127,12 @@ def main() -> None:
     # True when a real update is genuinely already underway.
     if update_check.try_auto_update():
         return
+
+    # See create_kill_on_close_job() -- every process spawned from here on
+    # (the server, every native window, however it's opened) lands in this
+    # same job, so nothing can outlive this tray process as an orphan.
+    global _job
+    _job = create_kill_on_close_job()
 
     # Resolve the real working port now, after the instance lock above is
     # already ours -- see resolve_server_port() for why this has to happen
