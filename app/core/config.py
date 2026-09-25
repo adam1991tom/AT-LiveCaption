@@ -53,6 +53,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "position": "bottom",
             "hold_seconds": 8,
             "fade_seconds": 1.5,
+            "show_disclaimer": False,
         },
         "overlay": {
             "font_family": "'Segoe UI', system-ui, -apple-system, sans-serif",
@@ -67,6 +68,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "position": "bottom",
             "hold_seconds": 8,
             "fade_seconds": 1.5,
+            "show_disclaimer": False,
         },
     },
 }

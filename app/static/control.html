@@ -330,6 +330,7 @@ const FIELD_SPECS = [
   ["position", "Position", "select", ["top", "center", "bottom"]],
   ["hold_seconds", "Hold before fade (s)", "number"],
   ["fade_seconds", "Fade duration (s)", "number"],
+  ["show_disclaimer", "Show \"AI-generated captions\" notice", "checkbox"],
 ];
 
 // ---- Tabs ------------------------------------------------------------------
@@ -454,9 +455,11 @@ function buildFields(containerId, surface) {
 function fillFields(surface) {
   const cfg = appearance[surface];
   if (!cfg) return;
-  FIELD_SPECS.forEach(([key]) => {
+  FIELD_SPECS.forEach(([key, , type]) => {
     const el = document.getElementById(surface + "-" + key);
-    if (el) el.value = cfg[key];
+    if (!el) return;
+    if (type === "checkbox") el.checked = !!cfg[key];
+    else el.value = cfg[key];
   });
 }
 
@@ -465,7 +468,8 @@ function collectFields(surface) {
   FIELD_SPECS.forEach(([key, , type]) => {
     const el = document.getElementById(surface + "-" + key);
     if (!el) return;
-    out[key] = (type === "number") ? Number(el.value) : el.value;
+    if (type === "checkbox") out[key] = el.checked;
+    else out[key] = (type === "number") ? Number(el.value) : el.value;
   });
   return out;
 }

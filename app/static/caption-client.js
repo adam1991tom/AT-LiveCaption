@@ -34,6 +34,7 @@
       els.wrap.dataset.position = cfg.position;
       holdMs = (cfg.hold_seconds || 8) * 1000;
       fadeMs = (cfg.fade_seconds || 1.5) * 1000;
+      if (els.disclaimer) els.disclaimer.hidden = !cfg.show_disclaimer;
       render();
     }
 

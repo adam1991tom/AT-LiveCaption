@@ -12,7 +12,7 @@ from pathlib import Path
 import pystray
 from PIL import Image, ImageDraw
 
-from app.core import autostart
+from app.core import autostart, update_check
 from app.core.procutil import CREATIONFLAGS, acquire_tray_instance_lock, get_base_url
 
 BASE_URL = get_base_url()
@@ -103,6 +103,16 @@ def main() -> None:
         # it instead of starting a second tray+server that would only fight
         # the first one over the port.
         open_control()
+        return
+
+    # Checked before anything else starts, every launch. A newer version's
+    # installer is now launching itself in the background (it needs this
+    # exe's file lock released to overwrite it, and will relaunch the app
+    # itself once done) -- this process's only job from here is to get out
+    # of the way. Any failure along the way (no internet, GitHub hiccup) is
+    # already swallowed inside try_auto_update() -- it only ever returns
+    # True when a real update is genuinely already underway.
+    if update_check.try_auto_update():
         return
 
     supervisor = ServerSupervisor()

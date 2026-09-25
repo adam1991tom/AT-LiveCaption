@@ -1,5 +1,5 @@
 #define MyAppName "AT LiveCaption"
-#define MyAppVersion "2.5.3"
+#define MyAppVersion "2.6.0"
 #define MyAppPublisher "AT LiveCaption"
 #define MyAppExeName "ATLiveCaption.exe"
 #define MyAppPort "8765"
@@ -78,10 +78,14 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; that need it, e.g. an older or locked-down managed image.
 Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Check: not IsWebView2Installed(); Flags: waituntilterminated
 Filename: "netsh.exe"; Parameters: "advfirewall firewall add rule name=""AT LiveCaption"" dir=in action=allow protocol=TCP localport={#MyAppPort} profile=private,domain"; Flags: runhidden; StatusMsg: "Configuring Windows Firewall..."
-; Only ever runs when the operator leaves "Launch AT LiveCaption" checked on
-; the finish page -- there is no separate dependency/runtime install step
-; here to accidentally launch the app regardless of that checkbox.
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,AT LiveCaption}"; Flags: nowait postinstall skipifsilent; Check: NotSilent
+; Launches when the operator leaves "Launch AT LiveCaption" checked on the
+; finish page (the normal interactive case), OR when /AUTORELAUNCH was
+; explicitly passed on the command line -- the app's own self-update passes
+; that so the newly-installed version starts itself once its own silent
+; re-install finishes. No other silent install launches the app: a fleet
+; deployment tool pushing this to many machines at once shouldn't
+; auto-launch on any of them.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,AT LiveCaption}"; Flags: nowait postinstall; Check: ShouldLaunch
 
 [UninstallRun]
 Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""AT LiveCaption"""; Flags: runhidden; RunOnceId: "RemoveFirewallRule"
@@ -105,11 +109,27 @@ begin
     (RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
 end;
 
-// Belt-and-suspenders alongside the skipifsilent flag above: WizardSilent()
-// is evaluated at runtime by whatever process actually executes the [Run]
-// entries, so unlike the flag it can't be defeated by command-line switches
-// getting lost across a UAC elevation re-exec.
-function NotSilent(): Boolean;
+// Launch after install when either: a human is actually watching (not
+// silent), or this is the app's own self-triggered update re-install,
+// signalled by a plain /AUTORELAUNCH switch on the command line (not a
+// [Tasks] entry -- Inno Setup tasks always render in the wizard's "Select
+// Additional Tasks" page when they have a Description, so there's no way
+// to make one silently selectable-but-invisible). Every OTHER silent
+// install (a fleet tool pushing this to many machines) still launches
+// nothing, same as before.
+function ShouldLaunch(): Boolean;
+var
+  i: Integer;
 begin
-  Result := not WizardSilent();
+  if not WizardSilent() then begin
+    Result := True;
+    exit;
+  end;
+  Result := False;
+  for i := 1 to ParamCount do begin
+    if CompareText(ParamStr(i), '/AUTORELAUNCH') = 0 then begin
+      Result := True;
+      exit;
+    end;
+  end;
 end;
