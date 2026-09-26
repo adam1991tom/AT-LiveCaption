@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 import re
 import secrets
 import subprocess
@@ -341,14 +342,20 @@ async def ws_endpoint(websocket: WebSocket) -> None:
 # ---- REST API ------------------------------------------------------------
 @app.get("/api/about")
 async def api_about():
+    config = state["config"]
+    # The active model can now differ from this build's own bundled
+    # default -- the background model-quality check (update_check.py /
+    # model_bench.py) can auto-promote a different, better-tested one --
+    # so this reflects config.model_dir's own name, not the fixed constant.
     return JSONResponse(
         {
             "app_version": version.APP_VERSION,
             "asr_engine": version.ASR_ENGINE,
-            "model_name": version.MODEL_NAME,
+            "model_name": Path(config["model_dir"]).name,
             "model_source_url": version.MODEL_SOURCE_URL,
-            "save_transcript": state["config"]["save_transcript"],
-            "transcript_dir": state["config"]["transcript_dir"],
+            "model_can_revert": bool(config.get("previous_model_dir")),
+            "save_transcript": config["save_transcript"],
+            "transcript_dir": config["transcript_dir"],
         }
     )
 
@@ -425,8 +432,33 @@ async def api_set_dsp(payload: dict):
 
 @app.post("/api/check-updates")
 async def api_check_updates():
-    result = await asyncio.get_event_loop().run_in_executor(None, update_check.check_for_updates)
+    current_model = Path(state["config"]["model_dir"]).name
+    result = await asyncio.get_event_loop().run_in_executor(None, update_check.check_for_updates, current_model)
     return JSONResponse(result)
+
+
+@app.post("/api/model/revert")
+async def api_model_revert():
+    """Swaps model_dir back to whatever was active before the background
+    model-quality check last auto-promoted a candidate (see
+    update_check.try_update_model()). Swaps rather than just clearing, so
+    clicking this again "reverts the revert" back to the other one.
+    """
+    config = state["config"]
+    previous = config.get("previous_model_dir")
+    if not previous or not model_download.model_is_ready(Path(previous)):
+        return JSONResponse({"error": "No previous model to revert to."}, status_code=400)
+
+    config["previous_model_dir"], config["model_dir"] = config["model_dir"], previous
+    await asyncio.get_event_loop().run_in_executor(None, save_config, config)
+
+    # This process only reads model_dir once, at its own startup -- the
+    # only way it picks up the swap is to end and let the tray's
+    # supervisor restart it (same mechanism as "Restart Caption Server"),
+    # so respond first and give the response a moment to actually reach
+    # the browser before this process disappears.
+    threading.Timer(0.5, lambda: os._exit(0)).start()
+    return JSONResponse({"ok": True, "reverted_to": Path(config["model_dir"]).name})
 
 
 @app.get("/api/vocabulary")

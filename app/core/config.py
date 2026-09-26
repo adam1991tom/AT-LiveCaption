@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.dsp import EQ_BANDS_HZ
-from app.core.model_download import MODEL_NAME
+from app.core.model_download import MODEL_NAME, model_is_ready
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -31,6 +31,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "audio_device_index": None,
     "audio_device_name": None,
     "model_dir": MODEL_DIR_DEFAULT,
+    # Set when the background model-quality check (see model_bench.py)
+    # auto-promotes a candidate model, so "Revert to previous model" in the
+    # control panel has something to swap back to. Empty means either
+    # nothing's ever been auto-promoted, or a revert already used this up.
+    "previous_model_dir": "",
+    # Full name (e.g. "sherpa-onnx-streaming-zipformer-en-2024-01-01") of
+    # the last candidate model the background check downloaded and tested,
+    # whatever the outcome -- keeps a rejected candidate from being
+    # re-downloaded and re-tested on every single future launch.
+    "model_update_checked": "",
     "save_transcript": False,
     "transcript_dir": str(DATA_DIR / "transcripts"),
     "theme": "blue",
@@ -105,12 +115,20 @@ def load_config() -> dict[str, Any]:
         default_copy = json.loads(json.dumps(DEFAULT_CONFIG))
         merged = _deep_merge(default_copy, on_disk)
 
-        # A persisted model_dir from a previous version pointing at a model
-        # this build no longer knows the filenames for is stale, not a user
-        # preference -- upgrading the shipped model must not require every
-        # existing install to somehow migrate its own config by hand.
-        if Path(merged.get("model_dir", "")).name != MODEL_NAME:
+        # A persisted model_dir pointing at a model that doesn't actually
+        # exist on disk (e.g. left over from an older app version whose
+        # default model has since changed) is stale, not a user preference
+        # -- upgrading the shipped model must not require every existing
+        # install to somehow migrate its own config by hand. This checks
+        # the directory actually has a working model in it rather than
+        # comparing its name against today's default, because a *valid*
+        # model_dir can legitimately differ from the default now: the
+        # background model-quality check (model_bench.py) can auto-promote
+        # a different, better-tested model, and that choice must survive
+        # the next load_config() call, not get silently reverted by it.
+        if not model_is_ready(Path(merged.get("model_dir", ""))):
             merged["model_dir"] = MODEL_DIR_DEFAULT
+            merged["previous_model_dir"] = ""
             save_config(merged)
 
         return merged

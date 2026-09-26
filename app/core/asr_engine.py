@@ -21,6 +21,7 @@ import sounddevice as sd
 
 from app.core import audio_devices, dsp
 from app.core.hub import ConnectionHub
+from app.core.model_download import resolve_model_files
 from app.core.transcript import TranscriptWriter
 
 RETRY_SECONDS = 3.0
@@ -176,15 +177,23 @@ class CaptionEngine:
     ) -> None:
         with self._lifecycle_lock:
             model_path = Path(model_dir)
+            # Different k2-fsa snapshots name their encoder/decoder/joiner
+            # files differently (see resolve_model_files) -- this build's
+            # active model isn't necessarily the one it shipped with
+            # anymore, since the background model-quality check can
+            # auto-promote a different, better-tested snapshot.
+            files = resolve_model_files(model_path)
+            if files is None:
+                raise RuntimeError(f"Model files not found or incomplete in {model_path}")
             was_running = self.is_running()
             device_index, device_name = self.device_index, self.device_name
             if was_running:
                 self.stop()
             self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
-                tokens=str(model_path / "tokens.txt"),
-                encoder=str(model_path / "encoder-epoch-99-avg-1.int8.onnx"),
-                decoder=str(model_path / "decoder-epoch-99-avg-1.onnx"),
-                joiner=str(model_path / "joiner-epoch-99-avg-1.int8.onnx"),
+                tokens=str(files["tokens"]),
+                encoder=str(files["encoder"]),
+                decoder=str(files["decoder"]),
+                joiner=str(files["joiner"]),
                 num_threads=2,
                 sample_rate=16000,
                 feature_dim=80,

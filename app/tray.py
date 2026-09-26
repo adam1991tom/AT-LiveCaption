@@ -144,6 +144,24 @@ def main() -> None:
     supervisor = ServerSupervisor()
     supervisor.start()
 
+    def check_model_update_background() -> None:
+        # Only ever runs for a packaged build (same reasoning as
+        # try_auto_update() above: a dev run testing this would otherwise
+        # download and load a whole second model on every single restart).
+        # Started only after the caption server above is already up, so a
+        # slow model download/benchmark can never delay this launch's own
+        # live captioning becoming available.
+        if not getattr(sys, "frozen", False):
+            return
+        try:
+            result = update_check.try_update_model()
+        except Exception:
+            return
+        if result.get("promoted"):
+            supervisor.restart()
+
+    threading.Thread(target=check_model_update_background, daemon=True).start()
+
     def open_audience(icon=None, item=None):
         open_window("audience")
 

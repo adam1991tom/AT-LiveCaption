@@ -12,8 +12,10 @@
   h1 { font-size: 18px; margin: 0 0 8px; }
   .sub { color: #999; font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
   input#code-input { width: 160px; font-size: 32px; font-weight: 700; letter-spacing: 8px; text-align: center; background: #12141a; color: var(--accent); border: 1px solid #333; border-radius: 8px; padding: 10px 0 10px 8px; }
-  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 10px 22px; font-size: 14px; cursor: pointer; margin-top: 18px; display: block; margin-left: auto; margin-right: auto; }
-  button:disabled { opacity: 0.6; cursor: default; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 10px 22px; font-size: 14px; cursor: pointer; margin-top: 18px; display: block; margin-left: auto; margin-right: auto; transition: filter 0.1s, transform 0.05s; }
+  button:hover { filter: brightness(1.15); }
+  button:active { filter: brightness(0.8); transform: scale(0.96); }
+  button:disabled { opacity: 0.6; cursor: default; filter: none; transform: none; }
   .status { font-size: 13px; min-height: 18px; margin-top: 14px; }
   .status.error { color: #e5484d; }
   .status.ok { color: #35d07f; }

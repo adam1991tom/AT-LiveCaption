@@ -12,9 +12,10 @@
   .brand-row img { width: 36px; height: 36px; }
   h1 { font-size: 19px; margin: 0; }
   .top-actions { margin-left: auto; display: flex; gap: 10px; }
-  .btn-open { background: var(--accent); color: #fff; text-decoration: none; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; }
+  .btn-open { background: var(--accent); color: #fff; text-decoration: none; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; transition: filter 0.1s, transform 0.05s; }
   .btn-open.secondary { background: #3a3f4b; }
-  .btn-open:hover { filter: brightness(1.1); }
+  .btn-open:hover { filter: brightness(1.15); }
+  .btn-open:active { filter: brightness(0.85); transform: scale(0.96); }
   .sub { color: #888; margin-bottom: 14px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; flex: none; }
   .theme-picker { display: flex; align-items: center; gap: 6px; }
   .theme-picker select { padding: 4px 6px; }
@@ -29,9 +30,12 @@
   #meter-track { background: #333; height: 14px; border-radius: 7px; overflow: hidden; width: 260px; }
   #meter-fill { background: #35d07f; height: 100%; width: 0%; transition: width 0.1s linear; }
   #preview { background: #000; color: #fff; font-size: 18px; min-height: 60px; padding: 10px 14px; border-radius: 6px; }
-  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; margin-right: 8px; }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; margin-right: 8px; transition: filter 0.1s, transform 0.05s; }
+  button:hover { filter: brightness(1.15); }
+  button:active { filter: brightness(0.8); transform: scale(0.96); }
   button.secondary { background: #3a3f4b; }
   button.danger { background: #e5484d; }
+  button:disabled { cursor: default; filter: none; transform: none; opacity: 0.55; }
   select, input[type=text], input[type=number] { background: #12141a; color: #eee; border: 1px solid #333; border-radius: 4px; padding: 6px 8px; }
   a.link-btn { color: var(--accent); text-decoration: none; margin-right: 16px; font-size: 14px; }
   .cols { display: flex; gap: 24px; flex-wrap: wrap; }
@@ -87,8 +91,9 @@
   /* Tabs -- keeps each section's content off-screen until picked, so the
      window's fixed size (see app/window.py PAGES) rarely needs to scroll. */
   .tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid #2a2e38; flex: none; }
-  .tab-btn { background: transparent; color: #999; border: none; border-radius: 0; padding: 9px 18px; font-size: 14px; cursor: pointer; margin: 0; border-bottom: 2px solid transparent; }
+  .tab-btn { background: transparent; color: #999; border: none; border-radius: 0; padding: 9px 18px; font-size: 14px; cursor: pointer; margin: 0; border-bottom: 2px solid transparent; transition: color 0.1s, transform 0.05s; }
   .tab-btn:hover { color: #eee; }
+  .tab-btn:active { transform: scale(0.96); }
   .tab-btn.active { color: #fff; border-bottom-color: var(--accent); }
   .tab-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
   .tab-pane[hidden] { display: none; }
@@ -124,6 +129,7 @@
       Theme
       <select id="theme-select"></select>
       <a class="link-btn" href="#" id="btn-check-updates" style="margin-left:12px;">Check for Updates</a>
+      <a class="link-btn" href="#" id="btn-model-revert" style="margin-left:12px; display:none; color:#f5a623;">&#9888; Model auto-updated &mdash; Revert</a>
       <a class="link-btn" href="/about" target="_blank">About &amp; Privacy</a>
     </span>
   </div>
@@ -357,7 +363,24 @@ if (!document.getElementById("tab-" + initialTab)) initialTab = "live";
 fetch("/api/about").then(r => r.json()).then(data => {
   document.getElementById("version-line").textContent =
     `v${data.app_version} — local streaming captions, no cloud, no internet required after install`;
+  document.getElementById("btn-model-revert").style.display = data.model_can_revert ? "inline" : "none";
 });
+
+document.getElementById("btn-model-revert").onclick = (e) => {
+  e.preventDefault();
+  const link = e.target;
+  if (!confirm("Revert the speech model to the one used before the last automatic update? The caption server will restart (a few seconds of downtime).")) return;
+  link.textContent = "Reverting...";
+  fetch("/api/model/revert", { method: "POST" }).then(r => r.json()).then(data => {
+    if (data.error) {
+      alert(data.error);
+      link.textContent = "⚠ Model auto-updated — Revert";
+      return;
+    }
+    link.textContent = "Restarting caption server...";
+    setTimeout(() => location.reload(), 4000);
+  }).catch(() => { link.textContent = "⚠ Model auto-updated — Revert"; });
+};
 
 const THEME_ACCENTS = { blue: "#069cfb", green: "#22c55e", purple: "#a855f7", orange: "#f97316" };
 let currentAccent = THEME_ACCENTS.blue;
@@ -941,7 +964,9 @@ document.getElementById("btn-check-updates").onclick = (e) => {
       html += `Model: currently <span class="ok">${data.model.current_model}</span>.`;
       if (data.model.other_dates_available.length) {
         html += ` Other snapshots also exist (${data.model.other_dates_available.join(", ")}) &mdash; ` +
-          `<a href="${data.model.releases_url}" target="_blank" style="color:var(--accent);">compare on GitHub</a> before switching; a later date isn't automatically better.`;
+          `<a href="${data.model.releases_url}" target="_blank" style="color:var(--accent);">compare on GitHub</a>. ` +
+          `A later date isn't automatically better, so the app already tests any new one in the background at launch ` +
+          `(against fixed reference clips) and only switches on a clear improvement &mdash; see "Revert" above if one ever shows up and you want the old one back.`;
       }
     }
     box.innerHTML = html;
